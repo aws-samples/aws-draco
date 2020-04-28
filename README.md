@@ -1,5 +1,4 @@
 ## License
-
 This code is licensed under the MIT-0 License. See the LICENSE file.
 
 # Copyright
@@ -27,7 +26,7 @@ illustrates this approach using the `wait4copy` state machine.
 
 ## Diagram
 
-![Enter the Dragon](https://github.com/nick-town/draco/raw/master/doc/Draco.png "The
+![Enter the Dragon](https://github.com/aws-samples/aws-draco/raw/master/doc/Draco.png "The
 DRACO Event Flow")
 
 ## Note on CloudFormation Templates
