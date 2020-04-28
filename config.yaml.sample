@@ -1,0 +1,17 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
+# This file must copied to config.yaml and then customized
+#
+# Constants here will be exported to the Environment when rake is run
+#
+Exports:
+  AWS_REGION: us-east-1
+  SOURCE_BUCKET: draco
+  PROD_ACCT: "123456789012"
+  DR_ACCT: "123456789012"
+
+# Set this to Producer or Consumer when sending test messages
+# using the rake event: tasks
+Role:
+  Consumer

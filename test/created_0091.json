@@ -1,0 +1,22 @@
+{
+    "Records": [
+        {
+            "EventSource": "aws:sns",
+            "EventVersion": "1.0",
+            "EventSubscriptionArn": "arn:aws:sns:us-east-1:341369230415:jgdr-p7-SnapshotTopic-1GUQMS7M5A9UO:489d745c-cf28-4524-84af-fdc5b006b0ca",
+            "Sns": {
+                "Type": "Notification",
+                "MessageId": "5a02b226-87a5-50fa-9a52-e4e069711073",
+                "TopicArn": "arn:aws:sns:us-east-1:341369230415:jgdr-p7-SnapshotTopic-1GUQMS7M5A9UO",
+                "Subject": "RDS Notification Message",
+                "Message": "{\"Event Source\":\"db-snapshot\",\"Event Time\":\"2020-02-19 08:06:39.209\",\"Identifier Link\":\"https://console.aws.amazon.com/rds/home?region=us-east-1#snapshot:id=rds:database-1-2020-02-19-08-03\",\"Source ID\":\"rds:database-1-2020-02-19-08-03\",\"Event ID\":\"http://docs.amazonwebservices.com/AmazonRDS/latest/UserGuide/USER_Events.html#RDS-EVENT-0091\",\"Event Message\":\"Automated snapshot created\"}",
+                "Timestamp": "2020-02-19T08:06:44.961Z",
+                "SignatureVersion": "1",
+                "Signature": "bub924HwB3xw9W9FxUlYBDBEpZXn8uGlof03P0XqiSeUyP42ZBLuu+PqaWwW/bFr+jsLVlaW4AlW+8jpetO0NLLSvrd59+6cZV9hn8RHcxC2NKj/S9woFSi+l7bMsznm+PUD1j7QXL7lkXDYNcmLUJhvmgc23XbTqVwG/iMN6rjAOfu74xkeQisaDRhfBcaIV5iFXBuz9jHqpml+GD8yGQ1HHJkgRndeFPm1y0iTK4CQxIHyMitBuKDQ0BZe44MO5RYykmodDKEowpTQYYkzQEDXpRXt0A5KX5uI2kyAzEEieIg7X9M1nxOpTMCN5+Yr1NMv2aXC9jYOGQoyT8kRhg==",
+                "SigningCertUrl": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-a86cb10b4e1f29c941702d737128f7b6.pem",
+                "UnsubscribeUrl": "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:341369230415:jgdr-p7-SnapshotTopic-1GUQMS7M5A9UO:489d745c-cf28-4524-84af-fdc5b006b0ca",
+                "MessageAttributes": {}
+            }
+        }
+    ]
+}

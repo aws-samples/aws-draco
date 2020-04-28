@@ -1,0 +1,5 @@
+vendor/bundle
+.bundle
+bin/rake
+.ruby-version
+config.yaml

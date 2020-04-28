@@ -1,0 +1,176 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
+# This sets up the AWS infrastructure to copy RDS DB Snapshots off to a separate DR account
+# This template is for the consumer of the snapshots
+# Remember that to give the producer account publish access to the DR topic you need both an identity policy on the source side and a resource policy on this side!
+# Show ABAC for the DR account to delete the snapshot copies in the Source account.
+#
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "A CloudFormation Template for a State Machine that waits for copies to complete"
+
+Parameters:
+  CodeBucket:
+    Description: The S3 bucket containing the code
+    Default: draco
+    Type: String
+  NotifyTopicArn:
+    Description: The arn of the topic to notify
+    Default: lambdabackup
+    Type: String
+
+Resources:
+  Wait4CopyExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: CloudwatchLogs
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:GetLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+        - PolicyName: InspectSnapshots
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - rds:DescribeDBSnapshots
+              Resource: '*'
+  
+  Wait4CopyLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Wait for a DB snapshot to finish copying
+      Handler: index.handler
+      Runtime: nodejs12.x
+      Role: !GetAtt Wait4CopyExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: draco/wait4copy.zip
+
+  Wait4CopySMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: CloudwatchLogs
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:GetLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+        - PolicyName: Lambda
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt Wait4CopyLambda.Arn
+        - PolicyName: SNS
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifyTopicArn
+
+  Wait4CopyStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "wait4copy-${AWS::AccountId}" # Generate the name to avoid circular deps
+      RoleArn: !GetAtt Wait4CopySMRole.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Wait for a DB Snapshot to become available and fire an SNS snapshot-copy-completed event",
+          "StartAt": "Configure",
+          "States": {
+            "Configure": {
+              "Type": "Pass",
+              "Result": {
+                "count": 0,
+                "maxcount": 60,
+                "exhausted": false
+              },
+              "ResultPath": "$.output.body.iterator",
+              "Next": "CheckStatus"
+            },
+            "CheckStatus": {
+              "Type": "Task",
+              "Resource": "${Wait4CopyLambda.Arn}",
+              "Parameters": {
+                "iterator.$": "$.output.body.iterator",
+                "SourceArn.$": "$.event.SourceArn"
+              },
+              "ResultPath": "$.output",
+              "Next": "Wait"
+            },
+            "Wait": {
+              "Type": "Wait",
+              "SecondsPath": "$.PollInterval",
+              "Next": "AreWeThereYet"
+            },
+            "AreWeThereYet": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.output.body.status",
+                  "StringEquals": "available",
+                  "Next": "NotifyAvailable"
+                },
+                {
+                  "Variable": "$.output.body.iterator.exhausted",
+                  "BooleanEquals": true,
+                  "Next": "NotifyFailure"
+                }
+              ],
+              "Default": "CheckStatus"
+            },
+            "NotifyFailure": {
+              "Type": "Fail",
+              "Error": "MaxPoll",
+              "Cause": "Maximum number of polls exceeded"
+            },
+            "NotifyAvailable": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${NotifyTopicArn}",
+                "Subject": "DRACO Event",
+                "Message.$": "$.event"
+              },
+              "End": true
+            }
+          }
+        }
+
+Outputs:
+  StateMachineArn:
+    Value: !Ref Wait4CopyStateMachine
+
+# vim: sts=2 et sw=2:
