@@ -9,7 +9,7 @@ const AWS = require('aws-sdk');
 const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 
 exports.handler = async (event) => {
-  console.debug("Raw Event: "+JSON.stringify(event));
+  if (process.env.DEBUG) console.debug("Raw Event: "+JSON.stringify(event));
   let snapshot_arn = event.SourceArn;
   let count = event.iterator.count + 1;
   let exhausted = (count == event.iterator.maxcount);
@@ -19,7 +19,7 @@ exports.handler = async (event) => {
       await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: snapshot_arn}).promise():
       await rds.describeDBSnapshots({DBSnapshotIdentifier: snapshot_arn}).promise();
     let info = event.Cluster ? rsp.DBClusterSnapshots[0]: rsp.DBSnapshots[0];
-    console.log("snapshot "+snapshot_arn+" status: " + info.Status);
+    console.log(info.Status + ": "+snapshot_arn);
     var status = 200;
     var output = {
       "iterator": {

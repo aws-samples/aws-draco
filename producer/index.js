@@ -45,7 +45,7 @@ exports.handler = async (incoming) => {
       default:
         throw "Unhandled subject: " + record.Sns.Subject;
     }
-    console.log("Incoming Event: " + JSON.stringify(evt));
+    if (process.env.DEBUG) console.log("Incoming Event: " + JSON.stringify(evt));
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
@@ -125,6 +125,7 @@ exports.handler = async (incoming) => {
         var snsevent = {
           "EventType": "snapshot-copy-shared",
           "SourceArn": evt.SourceArn,
+          "Cluster": evt.Cluster,
           "TagList": rsp.TagList
         };
         let p3 = {
@@ -152,6 +153,7 @@ exports.handler = async (incoming) => {
     status = 200;
   } catch (e) {
     console.error(e);
+    console.log("Raw Event: " + JSON.stringify(incoming));
     output = e;
     status = 500;
   }

@@ -43,7 +43,7 @@ exports.handler = async (event) => {
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
     let message = JSON.parse(record.Sns.Message);
-    console.log("Incoming Event: " + JSON.stringify(message));
+    if (process.env.DEBUG) console.log("Incoming Event: " + JSON.stringify(message));
 
     let source_arn = message.SourceArn;
     let target_arn = message.TargetArn;
@@ -57,12 +57,14 @@ exports.handler = async (event) => {
         if (message.Cluster) {
           params.SourceDBClusterSnapshotIdentifier = source_arn;
           params.TargetDBClusterSnapshotIdentifier = target_id;
+          output = await rds.copyDBClusterSnapshot(params).promise();
+          target_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
         } else {
           params.SourceDBSnapshotIdentifier = source_arn;
           params.TargetDBSnapshotIdentifier = target_id;
+          output = await rds.copyDBSnapshot(params).promise();
+          target_arn = output.DBSnapshot.DBSnapshotArn;
         }
-        output = await rds.copyDBSnapshot(params).promise();
-        target_arn = output.DBSnapshot.DBSnapshotArn;
         console.log("Copy initiated: " + source_arn + " to "+target_arn);
         var sfinput = {
           "PollInterval": 60,
@@ -112,6 +114,7 @@ exports.handler = async (event) => {
     }
     status = 200;
   } catch (e) {
+    console.log("Raw Event: " + JSON.stringify(event));
     console.error(e);
     output = e;
     status = 500;
