@@ -1,0 +1,22 @@
+{
+    "Records": [
+        {
+            "EventSource": "aws:sns",
+            "EventVersion": "1.0",
+            "EventSubscriptionArn": "arn:aws:sns:us-east-1:166824542191:jgdr-test-TargetSnapshotTopic-17T1F55IV1YPM:928e5c70-6387-4a2a-b1fb-2d03b107e757",
+            "Sns": {
+                "Type": "Notification",
+                "MessageId": "ed816683-8b83-52ce-a608-30463cf317f3",
+                "TopicArn": "arn:aws:sns:us-east-1:166824542191:jgdr-test-TargetSnapshotTopic-17T1F55IV1YPM",
+                "Subject": "RDS Notification Message",
+                "Message": "This is a message to notify that RDS will attempt to send you event notifications of type db-snapshot to the topic arn:aws:sns:us-east-1:166824542191:jgdr-test-TargetSnapshotTopic-17T1F55IV1YPM.",
+                "Timestamp": "2020-02-18T09:58:08.225Z",
+                "SignatureVersion": "1",
+                "Signature": "LV4jXpLXMgXW+R33UPWxqJhzezVPhaWBG5tVaWEJEQDi6roYY1H4lpZlihr229t0M+g5tgtQt0tWl6r6SbqKeT4kwYkUWGc0PdA1OmOLbvk6O+1TFadSuFsxCP/xKUHui5PU/4AZN4/3rC1fWJkr+dAA3TUpYBUcHF9eYEBUD8AH4dfzTviXIIankjImWU7XaX0O/xJXxj8ndRxa6ln7mCQ16mRbFPBAuGKUvHEKozvJBFM+AiC3yimY/U4B/WVegNk1HJiifjTKSVpDdFAr8atbaZpZggSPZWYJtKFMIuhtf7sIpMQgsavPkK9SbcswKHkhMsFSKC2uAeW/YFlP1g==",
+                "SigningCertUrl": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-a86cb10b4e1f29c941702d737128f7b6.pem",
+                "UnsubscribeUrl": "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:166824542191:jgdr-test-TargetSnapshotTopic-17T1F55IV1YPM:928e5c70-6387-4a2a-b1fb-2d03b107e757",
+                "MessageAttributes": {}
+            }
+        }
+    ]
+}

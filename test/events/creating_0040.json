@@ -1,0 +1,22 @@
+{
+    "Records": [
+        {
+            "EventSource": "aws:sns",
+            "EventVersion": "1.0",
+            "EventSubscriptionArn": "arn:aws:sns:us-east-1:341369230415:GetRdsEventTopic:435b49c6-58d4-449a-8fa0-98572bdbc9bc",
+            "Sns": {
+                "Type": "Notification",
+                "MessageId": "f899eedf-2566-5a66-9901-b81ac5b3562c",
+                "TopicArn": "arn:aws:sns:us-east-1:341369230415:GetRdsEventTopic",
+                "Subject": "RDS Notification Message",
+                "Message": "{\"Event Source\":\"db-snapshot\",\"Event Time\":\"2020-02-18 12:54:33.307\",\"Identifier Link\":\"https://console.aws.amazon.com/rds/home?region=us-east-1#snapshot:id=manual-db1\",\"Source ID\":\"manual-db1\",\"Event ID\":\"http://docs.amazonwebservices.com/AmazonRDS/latest/UserGuide/USER_Events.html#RDS-EVENT-0040\",\"Event Message\":\"Creating manual snapshot\"}",
+                "Timestamp": "2020-02-18T12:54:45.124Z",
+                "SignatureVersion": "1",
+                "Signature": "YPVsBsxBWXfVJtArqjNy6CfV/hb2NfyVHA+W3SXNfUII3GiCWVAsvB+iHxjiG8/LBnr8BS1xvKd58IemNjGgKNQYBiakxi2tdYckArRb/jf1G4i8n3HjgSQggLwdicWtua1hHkpQjRjVt2jBJ4W+1XetwP3vfS2YPKUrihGIus43rEKmwrmhe6pe/bNBSpiMBtmH41bKfVCwGig4mtzvwsmRldWPO0vTAiejoGes0cbrxgF0xWgrYj0RuEKEtQemIJnP3iXVIbsXic4nZBOa7bXY3RTpq3S/Ls6HV0UPRkdL8cD49PgHj/vXqzqAllYZ1eqRDIzUrgIsHpAbBF98zQ==",
+                "SigningCertUrl": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-a86cb10b4e1f29c941702d737128f7b6.pem",
+                "UnsubscribeUrl": "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:341369230415:GetRdsEventTopic:435b49c6-58d4-449a-8fa0-98572bdbc9bc",
+                "MessageAttributes": {}
+            }
+        }
+    ]
+}
