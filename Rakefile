@@ -109,10 +109,12 @@ task :upload do
 	    puts "Zipfile for #{src} created"
 	end
 	File.open("#{tf.path}.zip", "rb") { |f|
-	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip", body: f)
+	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip",
+			  body: f, acl: "authenticated-read")
 	}
 	File.open("#{src}.yaml", "r") { |f|
-	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml", body: f)
+	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml",
+			  body: f, acl: "authenticated-read")
 	}
 	puts "#{src}.{yaml,zip} uploaded to s3://#{ENV['SOURCE_BUCKET']}/draco"
 	tf.unlink
