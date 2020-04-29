@@ -38,6 +38,7 @@ exports.handler = async (incoming) => {
       case "DRACO Event":
         message = JSON.parse(record.Sns.Message);
         evt.EventType = message["EventType"];
+        evt.Cluster   = message["Cluster"];
         evt.SourceArn = message["SourceArn"];
         evt.SourceId = evt.SourceArn.split(':')[6];
         break;
@@ -109,14 +110,16 @@ exports.handler = async (incoming) => {
       case 'snapshot-copy-completed': { // share a previously created copy
         console.log("Sharing " + evt.SourceId + " with " + dr_acct);
         let p2 = {
-          DBSnapshotIdentifier: evt.SourceId,
           AttributeName: 'restore',
-          ValuesToAdd: [ dr_acct ],
+          ValuesToAdd: [ dr_acct ]
         };
-        if (evt.Cluster)
+        if (evt.Cluster) {
+          p2.DBClusterSnapshotIdentifier = evt.SourceId;
           await rds.modifyDBClusterSnapshotAttribute(p2).promise();
-        else
+        } else {
+          p2.DBSnapshotIdentifier = evt.SourceId;
           await rds.modifyDBSnapshotAttribute(p2).promise();
+        }
         console.log("Shared " + evt.SourceId + " with " + dr_acct);
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         var snsevent = {

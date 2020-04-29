@@ -114,6 +114,7 @@ Resources:
                 - rds:DeleteDBSnapshot
                 - rds:DeleteDBClusterSnapshot
                 - rds:ModifyDBSnapshotAttribute
+                - rds:ModifyDBClusterSnapshotAttribute
                 - rds:DescribeDBSnapshots
                 - rds:DescribeDBClusterSnapshots
                 - rds:ListTagsForResource

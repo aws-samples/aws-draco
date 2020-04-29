@@ -13,14 +13,13 @@ exports.handler = async (event) => {
   let snapshot_arn = event.SourceArn;
   let count = event.iterator.count + 1;
   let exhausted = (count == event.iterator.maxcount);
-  console.log("Checking snapshot "+snapshot_arn);
   try {
     if (!snapshot_arn) throw "SourceArn not provided";
     let rsp = event.Cluster ?
       await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: snapshot_arn}).promise():
       await rds.describeDBSnapshots({DBSnapshotIdentifier: snapshot_arn}).promise();
-    console.log("rsp: " + JSON.stringify(rsp));
     let info = event.Cluster ? rsp.DBClusterSnapshots[0]: rsp.DBSnapshots[0];
+    console.log("snapshot "+snapshot_arn+" status: " + info.Status);
     var status = 200;
     var output = {
       "iterator": {
