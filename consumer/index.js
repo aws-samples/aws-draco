@@ -51,15 +51,16 @@ exports.handler = async (event) => {
     let taglist = message.TagList || [];
     taglist.push({ Key: tagkey, Value: tagval });
     switch (message.EventType) {
-      case 'snapshot-copy-shared': // copy it
+      case 'snapshot-copy-shared': { // copy it
         target_id = source_arn.split(':')[6].slice(0,-3); // remove '-dr'
-        var params = {
-          SourceDBSnapshotIdentifier: source_arn,
-          TargetDBSnapshotIdentifier: target_id,
-          CopyTags: false,
-          KmsKeyId: key_arn,
-          Tags: taglist
-        };
+        let params = { CopyTags: false, KmsKeyId: key_arn, Tags: taglist };
+        if (message.Cluster) {
+          params.SourceDBClusterSnapshotIdentifier = source_arn;
+          params.TargetDBClusterSnapshotIdentifier = target_id;
+        } else {
+          params.SourceDBSnapshotIdentifier = source_arn;
+          params.TargetDBSnapshotIdentifier = target_id;
+        }
         output = await rds.copyDBSnapshot(params).promise();
         target_arn = output.DBSnapshot.DBSnapshotArn;
         console.log("Copy initiated: " + source_arn + " to "+target_arn);
@@ -67,6 +68,7 @@ exports.handler = async (event) => {
           "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
+            "Cluster": message.Cluster,
             "SourceArn": target_arn,
             "TargetArn": source_arn,
             "TagList": taglist
@@ -80,6 +82,7 @@ exports.handler = async (event) => {
         output = await sf.startExecution(sfparams).promise();
         console.log("wait4copy: " + JSON.stringify(sfinput));
         break;
+      }
 
       case 'snapshot-copy-completed': // Tell the owning account to delete
         // Wait4Copy always uses SourceArn for the snapshot being created,
@@ -87,6 +90,7 @@ exports.handler = async (event) => {
         //
         var snsevent = {
           "EventType": "snapshot-delete-shared",
+          "Cluster": message.Cluster,
           "SourceArn": target_arn
         };
         var p2 = {
@@ -97,7 +101,7 @@ exports.handler = async (event) => {
         output = await sns.publish(p2).promise();
         console.log("Published: " + JSON.stringify(snsevent));
         try {
-          await lifeCycle(source_arn);
+          await lifeCycle(source_arn, message.Cluster);
         } catch (e) {
           console.error(e);
         }
@@ -117,9 +121,9 @@ exports.handler = async (event) => {
 /*
  * Retrieve a list of all the snapshots that Draco has taken, check the lifecycle policy and delete if necessary
  */
-async function lifeCycle(snapshot_arn) {
+async function lifeCycle(snapshot_arn, isCluster) {
   console.log("Performing Lifecycle Management: " + snapshot_arn);
-  let instances = {};
+  let databases = {};
   let rsp = {};
 
   // Collect all current snapshots and determine their age
@@ -131,23 +135,25 @@ async function lifeCycle(snapshot_arn) {
   const start = Date.now();
 
   do {
-    rsp = await rds.describeDBSnapshots(params).promise();
+    rsp = isCluster ?
+      await rds.describeDBClusterSnapshots(params).promise():
+      await rds.describeDBSnapshots(params).promise();
     if ('Marker' in rsp) params.Marker = rsp.Marker;
     else delete params.Marker;
 
-    for (const dbs of rsp.DBSnapshots) {
+    for (const dbs of isCluster ? rsp.DBClusterSnapshots: rsp.DBSnapshots) {
       if (dbs.Status != "available") continue;
-      let instance_id = dbs.DBInstanceIdentifier;
-      if (!(instance_id in instances)) {
-        instances[instance_id] = new Array();
+      let database_id = isCluster ? dbs.DBClusterIdentifier: dbs.DBInstanceIdentifier;
+      if (!(database_id in databases)) {
+        databases[database_id] = new Array();
       }
       let snapshot_date = new Date(dbs.SnapshotCreateTime);
 
       let snapshot_age = (start - snapshot_date.valueOf()) / (24  * 3600 * 1000.0);
-      instances[instance_id].push ({
+      databases[database_id].push ({
         age:  snapshot_age,
-        id:   dbs.DBSnapshotIdentifier,
-        arn:  dbs.DBSnapshotArn,
+        id:   isCluster ? dbs.DBSnapshotIdentifier: dbs.DBSnapshotIdentifier,
+        arn:  isCluster ? dbs.DBClusterSnapshotArn: dbs.DBSnapshotArn,
         date: dbs.SnapshotCreateTime,
         day: snapshot_date.getDay(), // 0-Sun
         week: snapshot_date.getWeek(),
@@ -160,9 +166,9 @@ async function lifeCycle(snapshot_arn) {
 
   // Now decide whether to retain or delete them, according to the rules
 
-  for (const instance in instances) {
-      const snapshots = instances[instance].sort((a,b) => a.age - b.age); // youngest first
-      console.log("Instance: "+instance+", Snapshots: "+JSON.stringify(snapshots));
+  for (const database in databases) {
+      const snapshots = databases[database].sort((a,b) => a.age - b.age); // youngest first
+      console.log("Database: "+database+", Snapshots: "+JSON.stringify(snapshots));
       // Get the Tags on the most recent Snapshot
       let youngest = snapshots[0];
       console.log("Youngest snapshot is: "+youngest.arn);
@@ -172,7 +178,7 @@ async function lifeCycle(snapshot_arn) {
         tags[tag.Key] = tag.Value;
       }
       const lifecycle = tags["Draco_Lifecycle"];
-      console.log("Instance: "+instance+" has "+lifecycle+" lifecycle");
+      console.log("Database: "+database+" has "+lifecycle+" lifecycle");
       switch (lifecycle) {
         // Keep one per day for a week, weekly for a month, monthly for a year
         case 'Standard': {
@@ -230,7 +236,7 @@ async function lifeCycle(snapshot_arn) {
           break;
         }
         default:
-          console.log("Lifecycle '"+lifecycle+"' not supported for instance: " + instance);
+          console.log("Lifecycle '"+lifecycle+"' not supported for database: " + database);
       }
     }
   console.log("That's all folks");

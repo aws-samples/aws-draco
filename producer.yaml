@@ -7,7 +7,7 @@
 # Show ABAC for the DR account to delete the snapshot copies in the Source account.
 #
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "A CloudFormation Template for Transferring DB Snapshots from another (DR) account"
+Description: "A CloudFormation Template for Copying DB Snapshots to another (DR) account"
 
 Parameters:
   CodeBucket:
@@ -16,10 +16,10 @@ Parameters:
     Type: String
   SourceAcct:
     Description: The account that shares the snapshot copies to be DRd
-    Default: 341369230415
+    Default: 111111111111
     Type: String
   TargetAcct:
-    Default: 166824542191
+    Default: 222222222222
     Description: The account that saves the DR Snapshots
     Type: String
   DrTagKey:
@@ -115,6 +115,7 @@ Resources:
                 - rds:DeleteDBClusterSnapshot
                 - rds:ModifyDBSnapshotAttribute
                 - rds:DescribeDBSnapshots
+                - rds:DescribeDBClusterSnapshots
                 - rds:ListTagsForResource
               Resource: '*'
         - PolicyName: AllowPublish2DrTopic
@@ -190,6 +191,15 @@ Resources:
       EventCategories:
       - creation
 
+  SnapshotEventSubscription:
+    Type: AWS::RDS::EventSubscription
+    Properties:
+      Enabled: true
+      SourceType: db-cluster-snapshot
+      SnsTopicArn: !Ref SnapshotTopic
+      EventCategories:
+      - backup
+
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -207,7 +217,7 @@ Resources:
           DR_ACCT: !Ref TargetAcct
           DR_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${TargetAcct}:DracoConsumer"
           KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
-          STATE_MACHINE_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
+          SM_COPY_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
           TAG_KEY: !Ref DrTagKey
           TAG_VALUE: !Ref DrTagValue
       Handler: index.handler

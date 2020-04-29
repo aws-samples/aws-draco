@@ -5,7 +5,7 @@
 # This template is for the CONSUMER of the snapshots ie. the DR account.
 #
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "A CloudFormation Template for Transferring DB Snapshots from another (DR) account"
+Description: "For receiving (DR) copies of DB Snapshots from another account"
 
 Parameters:
   CodeBucket:
@@ -14,10 +14,10 @@ Parameters:
     Type: String
   SourceAcct:
     Description: The account that shares the snapshot copies to be DRd
-    Default: 341369230415
+    Default: 111111111111
     Type: String
   TargetAcct:
-    Default: 166824542191
+    Default: 222222222222
     Description: The account that saves the DR Snapshots
     Type: String
   DrTagKey:
@@ -99,6 +99,7 @@ Resources:
                 - rds:DeleteDBClusterSnapshot
                 - rds:ModifyDBSnapshotAttribute
                 - rds:DescribeDBSnapshots
+                - rds:DescribeDBClusterSnapshots
                 - rds:ListTagsForResource
               Resource: '*'
         - PolicyName: AllowPublish2ProducerTopic

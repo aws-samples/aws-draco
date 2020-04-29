@@ -3,6 +3,7 @@
 //
 // This function will be invoked from a step function and passed:
 // * The Arn of a Snapshot to check
+// * The type of snapshot (Cluster will be true)
 // * An iterator object for use in the step function
 const AWS = require('aws-sdk');
 const rds = new AWS.RDS({apiVersion: '2014-10-31'});
@@ -15,12 +16,11 @@ exports.handler = async (event) => {
   console.log("Checking snapshot "+snapshot_arn);
   try {
     if (!snapshot_arn) throw "SourceArn not provided";
-    var params = {
-      DBSnapshotIdentifier: snapshot_arn, // works even though it's an ARN not an Id
-    }
-    var rsp = await rds.describeDBSnapshots(params).promise();
+    let rsp = event.Cluster ?
+      await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: snapshot_arn}).promise():
+      await rds.describeDBSnapshots({DBSnapshotIdentifier: snapshot_arn}).promise();
     console.log("rsp: " + JSON.stringify(rsp));
-    let info = rsp.DBSnapshots[0];
+    let info = event.Cluster ? rsp.DBClusterSnapshots[0]: rsp.DBSnapshots[0];
     var status = 200;
     var output = {
       "iterator": {
@@ -32,7 +32,8 @@ exports.handler = async (event) => {
       "info": info
     };
   } catch (e) {
-    status = (e.name == "DBSnapshotNotFound") ? 404: 500;
+    let notfound = event.Cluster? "DBClusterSnapshotNotFound": "DBSnapshotNotFound";
+    status = (e.name == notfound) ? 404: 500;
     console.log("status: "+status);
     console.error(e);
     output = {"status": null, "error": e};

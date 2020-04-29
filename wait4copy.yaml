@@ -49,6 +49,7 @@ Resources:
             - Effect: Allow
               Action:
                 - rds:DescribeDBSnapshots
+                - rds:DescribeDBClusterSnapshots
               Resource: '*'
   
   Wait4CopyLambda:
@@ -125,7 +126,8 @@ Resources:
               "Resource": "${Wait4CopyLambda.Arn}",
               "Parameters": {
                 "iterator.$": "$.output.body.iterator",
-                "SourceArn.$": "$.event.SourceArn"
+                "SourceArn.$": "$.event.SourceArn",
+                "Cluster.$": "$.event.Cluster"
               },
               "ResultPath": "$.output",
               "Next": "Wait"

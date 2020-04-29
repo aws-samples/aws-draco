@@ -8,7 +8,7 @@ const sns = new AWS.SNS({apiVersion: '2010-03-31'});
 const key_arn = process.env.KEY_ARN;
 const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
-const state_machine_arn = process.env.STATE_MACHINE_ARN;
+const sm_copy_arn = process.env.SM_COPY_ARN;
 
 exports.handler = async (incoming) => {
   var output;
@@ -58,15 +58,46 @@ exports.handler = async (incoming) => {
         };
         rsp = await rds.copyDBSnapshot(p0).promise();
         let target_arn = rsp.DBSnapshot.DBSnapshotArn;
-        var sfinput = {
+        let sfinput = {
           "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
+            "Cluster": false,
             "SourceArn": target_arn
           }
         };
         let p1 = {
-          stateMachineArn: state_machine_arn,
+          stateMachineArn: sm_copy_arn,
+          name: "wait4snapshot_copy_" + target_id,
+          input: JSON.stringify(sfinput),
+        };
+        output = await sf.startExecution(p1).promise();
+        console.log("wait4copy: " + JSON.stringify(sfinput));
+        break;
+      }
+
+      case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
+      case 'RDS-EVENT-0075': { // Manual Cluster Snapshot Created
+        let target_id = ((evt.EventType == 'RDS-EVENT-00169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
+        console.log("Copying Cluster " + evt.SourceId + " to " + target_id);
+        let p0 = {
+          SourceDBClusterSnapshotIdentifier: evt.SourceId,
+          TargetDBClusterSnapshotIdentifier: target_id,
+          CopyTags: true,
+          KmsKeyId: key_arn
+        };
+        rsp = await rds.copyDBClusterSnapshot(p0).promise();
+        let target_arn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
+        let sfinput = {
+          "PollInterval": 60,
+          "event": {
+            "EventType": "snapshot-copy-completed",
+            "Cluster": true,
+            "SourceArn": target_arn
+          }
+        };
+        let p1 = {
+          stateMachineArn: sm_copy_arn,
           name: "wait4snapshot_copy_" + target_id,
           input: JSON.stringify(sfinput),
         };
@@ -82,7 +113,10 @@ exports.handler = async (incoming) => {
           AttributeName: 'restore',
           ValuesToAdd: [ dr_acct ],
         };
-        await rds.modifyDBSnapshotAttribute(p2).promise();
+        if (evt.Cluster)
+          await rds.modifyDBClusterSnapshotAttribute(p2).promise();
+        else
+          await rds.modifyDBSnapshotAttribute(p2).promise();
         console.log("Shared " + evt.SourceId + " with " + dr_acct);
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         var snsevent = {
@@ -101,11 +135,10 @@ exports.handler = async (incoming) => {
       }
 
       case 'snapshot-delete-shared': { // delete the previously shared copy
-        let p4 = {
-          DBSnapshotIdentifier: evt.SourceId
-        };
-        output = await rds.deleteDBSnapshot(p4).promise();
-        console.log("Deleting Snapshot " + evt.SourceArn);
+        output = evt.Cluster?
+          await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: evt.SourceId }).promise():
+          await rds.deleteDBSnapshot({ DBSnapshotIdentifier: evt.SourceId }).promise();
+        console.log("Deleting "+(evt.Cluster ? "Cluster ": "")+"Snapshot " + evt.SourceArn);
         break;
       }
 
