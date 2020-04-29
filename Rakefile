@@ -8,11 +8,12 @@ require 'aws-sdk-s3'
 require 'aws-sdk-rds'
 require 'aws-sdk-sns'
 require 'json'
+require 'fileutils'
 require 'tempfile'
 require 'yaml'
 
 Rake.application.options.trace = false
-Rake.application.options.suppress_backtrace_pattern = /bundle/
+Rake.application.options.suppress_backtrace_pattern = /^(?!#{Regexp.escape(FileUtils.pwd)}\/[^.])/
 
 class String
     def camelize
@@ -31,8 +32,8 @@ begin
     raise "Role must be defined in config.yaml" unless $role = config['Role']
     raise "Role must be #{roles.join(' or ')}" unless roles.include? $role
     exports = config["Exports"]
-    exports["DR_TOPIC_ARN"] = "arn:aws:sns:#{config['AWS_REGION']}:#{exports['DR_ACCT']}:DracoConsumer"
-    exports["PROD_TOPIC_ARN"] = "arn:aws:sns:#{config['AWS_REGION']}:#{exports['PROD_ACCT']}:DracoProducer"
+    exports["DR_TOPIC_ARN"] = "arn:aws:sns:#{exports['AWS_REGION']}:#{exports['DR_ACCT']}:DracoConsumer"
+    exports["PROD_TOPIC_ARN"] = "arn:aws:sns:#{exports['AWS_REGION']}:#{exports['PROD_ACCT']}:DracoProducer"
     defaults = { 
 	'AWS_PROFILE' => nil, 
 	'AWS_REGION' => nil, 
@@ -44,14 +45,20 @@ begin
     }
     export = defaults.merge(exports)
     msg = []
+    puts("Using the following environment variables:")
     export.keys.each do |var|
-	next if ENV[var]
+	if ENV[var]
+	    puts "#{var}: #{ENV[var]} (environment)"
+	    next 
+	end
 	if exports[var]
+	    puts "#{var}: #{export[var]} (config)"
 	    ENV[var] = export[var] 
 	else
 	    msg << "Need #{var} to be set in environment or config.yaml!"
 	end
     end
+    puts("")
     unless msg.empty?
 	STDERR.puts msg.join("\n") 
 	exit 2
@@ -169,7 +176,7 @@ namespace :event do
 	res = rds.describe_db_snapshots(db_snapshot_identifier: snapshot_id);
 	snapshot_arn = res[:db_snapshots].first[:db_snapshot_arn]
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
-	topic_arn = ($role == 'Producer' ? ENV['TOPIC_ARN']: ENV['DR_TOPIC_ARN']) or raise "#{$role} Topic not set"
+	topic_arn = ($role == 'Producer' ? ENV['PROD_TOPIC_ARN']: ENV['DR_TOPIC_ARN']) or raise "#{$role} Topic not set"
 	topic = sns.topic(topic_arn)
 	event = { 'EventType': 'snapshot-copy-completed', 'SourceArn': snapshot_arn, 'TargetArn': 'fake' }
 	topic.publish({
@@ -187,7 +194,7 @@ namespace :event do
 	res = rds.describe_db_snapshots(db_snapshot_identifier: snapshot_id);
 	snapshot_arn = res[:db_snapshots].first[:db_snapshot_arn]
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
-	topic = sns.topic(ENV['DR_TOPIC_ARN']) rescue raise("DR_TOPIC_ARN not set")
+	topic = sns.topic(ENV['DR_TOPIC_ARN'])
 	event = { 'EventType': 'snapshot-copy-shared', 'SourceArn': snapshot_arn }
 	topic.publish({
 	    subject: 'DRACO Event',
@@ -201,7 +208,7 @@ namespace :event do
 	snapshot_id = args[:snapshot_id]
 	puts "Snapshot: #{snapshot_id}"
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
-	topic = sns.topic(ENV['DR_TOPIC_ARN']) rescue raise("DR_TOPIC_ARN not set")
+	topic = sns.topic(ENV['DR_TOPIC_ARN'])
 	event = { 'EventType': 'snapshot-copy-completed', 'SourceArn': snapshot_id, 'TargetArn': snapshot_id+'-dr' }
 	topic.publish({
 	    subject: 'DRACO Event',
@@ -218,7 +225,7 @@ namespace :event do
 	res = rds.describe_db_snapshots(db_snapshot_identifier: snapshot_id);
 	snapshot_arn = res[:db_snapshots].first[:db_snapshot_arn]
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
-	topic = sns.topic(ENV['TOPIC_ARN'])rescue raise("TOPIC_ARN not set")
+	topic = sns.topic(ENV['PROD_TOPIC_ARN'])
 	event = { 'EventType': 'snapshot-delete-shared', 'SourceArn': snapshot_arn }
 	topic.publish({
 	    subject: 'DRACO Event',
@@ -226,6 +233,26 @@ namespace :event do
 	})
 	puts "Sent #{event}"
     end
+
+    namespace :cluster do
+	desc "Send a cluster snapshot copy shared event to the Consumer"
+	task :snapshot_copy_shared, [:snapshot_id]  do |t, args|
+	    rds = Aws::RDS::Client.new(region: ENV['AWS_REGION'])
+	    snapshot_id = args[:snapshot_id]
+	    puts "Snapshot: #{snapshot_id}"
+	    res = rds.describe_db_cluster_snapshots(db_cluster_snapshot_identifier: snapshot_id);
+	    snapshot_arn = res[:db_cluster_snapshots].first[:db_cluster_snapshot_arn]
+	    sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
+	    topic = sns.topic(ENV['DR_TOPIC_ARN'])
+	    event = { 'EventType': 'snapshot-copy-shared', 'SourceArn': snapshot_arn, 'Cluster': true }
+	    topic.publish({
+		subject: 'DRACO Event',
+		message: event.to_json
+	    })
+	    puts "Sent #{event}"
+	end
+    end # namespace :cluster
+
 end # namespace :event
 
 # vim: ts=8 sts=4 sw=4 noet ft=ruby
