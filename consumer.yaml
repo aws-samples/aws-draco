@@ -12,6 +12,14 @@ Parameters:
     Description: The S3Bucket that stores the Lambdas
     Default: draco
     Type: String
+  ConsumerLambdaVersion:
+    Description: The S3 Bucket version of the Consumer Lambda code to use
+    Default: draco
+    Type: String
+  Wait4CopyLambdaVersion:
+    Description: The S3 Bucket version of the Wait4Copy Lambda code to use
+    Default: draco
+    Type: String
   SourceAcct:
     Description: The account that shares the snapshot copies to be DRd
     Default: 111111111111
@@ -215,6 +223,7 @@ Resources:
       TemplateURL: !Sub "https://s3.amazonaws.com/${CodeBucket}/draco/wait4copy.yaml"
       Parameters:
         CodeBucket: !Ref CodeBucket
+        Wait4CopyLambdaVersion: !Ref Wait4CopyLambdaVersion
         NotifyTopicArn: !Ref SnapshotTopic
 
 Outputs:

@@ -14,6 +14,14 @@ Parameters:
     Description: The S3 bucket containing the code
     Default: draco
     Type: String
+  ProducerLambdaVersion:
+    Description: The S3 Bucket version of the Producer Lambda code to use
+    Default: draco
+    Type: String
+  Wait4CopyLambdaVersion:
+    Description: The S3 Bucket version of the Wait4Copy Lambda code to use
+    Default: draco
+    Type: String
   SourceAcct:
     Description: The account that shares the snapshot copies to be DRd
     Default: 111111111111
@@ -228,6 +236,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: draco/producer.zip
+        S3ObjectVersion: !Ref ProducerLambdaVersion
 
   Wait4Copy:
     Type: AWS::CloudFormation::Stack
@@ -235,6 +244,7 @@ Resources:
       TemplateURL: !Sub "https://s3.amazonaws.com/${CodeBucket}/draco/wait4copy.yaml"
       Parameters:
         CodeBucket: !Ref CodeBucket
+        Wait4CopyLambdaVersion: !Ref Wait4CopyLambdaVersion
         NotifyTopicArn: !Ref SnapshotTopic
 
 Outputs:
