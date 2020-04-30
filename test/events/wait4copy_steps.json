@@ -1,0 +1,62 @@
+{
+  "Comment": "Wait for a DB Snapshot to become available and fire an SNS snapshot-copy-completed event",
+  "StartAt": "Configure",
+  "States": {
+    "Configure": {
+      "Type": "Pass",
+      "Result": {
+        "count": 0,
+        "maxcount": 3,
+        "exhausted": false
+      },
+      "ResultPath": "$.output.body.iterator",
+      "Next": "CheckStatus"
+    },
+    "CheckStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:341369230415:function:wait4snapshot_copy",
+      "Parameters": {
+        "iterator.$": "$.output.body.iterator",
+        "SourceArn.$": "$.event.SourceArn"
+      },
+      "ResultPath": "$.output",
+      "Next": "Wait"
+    },
+    "Wait": {
+      "Type": "Wait",
+      "SecondsPath": "$.PollInterval",
+      "Next": "AreWeThereYet"
+    },
+    "AreWeThereYet": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.output.body.status",
+          "StringEquals": "available",
+          "Next": "NotifyAvailable"
+        },
+        {
+          "Variable": "$.output.body.iterator.exhausted",
+          "BooleanEquals": true,
+          "Next": "NotifyFailure"
+        }
+      ],
+      "Default": "CheckStatus"
+    },
+    "NotifyFailure": {
+      "Type": "Fail",
+      "Error": "MaxPoll",
+      "Cause": "Maximum number of polls exceeded"
+    },
+    "NotifyAvailable": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn.$": "$.TopicArn",
+        "Subject": "DR Snapshot Copied",
+        "Message.$": "$.event"
+      },
+      "End": true
+    }
+  }
+}

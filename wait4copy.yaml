@@ -14,6 +14,10 @@ Parameters:
     Description: The S3 bucket containing the code
     Default: draco
     Type: String
+  Wait4CopyLambdaVersion:
+    Description: The S3 Bucket version of the Wait4Copy Lambda code to use
+    Default: draco
+    Type: String
   NotifyTopicArn:
     Description: The arn of the topic to notify
     Default: lambdabackup
@@ -49,6 +53,7 @@ Resources:
             - Effect: Allow
               Action:
                 - rds:DescribeDBSnapshots
+                - rds:DescribeDBClusterSnapshots
               Resource: '*'
   
   Wait4CopyLambda:
@@ -61,6 +66,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: draco/wait4copy.zip
+        S3ObjectVersion: !Ref Wait4CopyLambdaVersion
 
   Wait4CopySMRole:
     Type: AWS::IAM::Role
@@ -125,7 +131,8 @@ Resources:
               "Resource": "${Wait4CopyLambda.Arn}",
               "Parameters": {
                 "iterator.$": "$.output.body.iterator",
-                "SourceArn.$": "$.event.SourceArn"
+                "SourceArn.$": "$.event.SourceArn",
+                "SnapshotType.$": "$.event.SnapshotType"
               },
               "ResultPath": "$.output",
               "Next": "Wait"

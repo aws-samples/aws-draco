@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "EventSource": "aws:sns",
+      "EventVersion": "1.0",
+      "EventSubscriptionArn": "arn:aws:sns:us-east-1:341369230415:dr_snapshot_handling:3862699a-6157-486f-8e26-b274a5b41f47",
+      "Sns": {
+        "Type": "Notification",
+        "MessageId": "1f70138c-aa9f-56a9-adb2-454c0d134283",
+        "TopicArn": "arn:aws:sns:us-east-1:341369230415:dr_snapshot_handling",
+        "Subject": "DR Snapshot Copied",
+        "Message": "{\"Event Source\":\"snapshot-copy-complete\",\"SourceArn\":\"arn:aws:rds:us-east-1:341369230415:snapshot:man-snap-db1-p6-dr\",\"Event Message\":\"Snapshot copied\"}",
+        "Timestamp": "2020-02-14T13:49:00.373Z",
+        "SignatureVersion": "1",
+        "MessageAttributes": {
+        }
+      }
+    }
+  ]
+}

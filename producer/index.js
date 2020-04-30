@@ -8,7 +8,7 @@ const sns = new AWS.SNS({apiVersion: '2010-03-31'});
 const key_arn = process.env.KEY_ARN;
 const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
-const state_machine_arn = process.env.STATE_MACHINE_ARN;
+const sm_copy_arn = process.env.SM_COPY_ARN;
 
 exports.handler = async (incoming) => {
   var output;
@@ -38,18 +38,19 @@ exports.handler = async (incoming) => {
       case "DRACO Event":
         message = JSON.parse(record.Sns.Message);
         evt.EventType = message["EventType"];
+        evt.SnapshotType   = message["SnapshotType"];
         evt.SourceArn = message["SourceArn"];
         evt.SourceId = evt.SourceArn.split(':')[6];
         break;
       default:
         throw "Unhandled subject: " + record.Sns.Subject;
     }
-    console.log("Incoming Event: " + JSON.stringify(evt));
+    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
         let target_id = ((evt.EventType == 'RDS-EVENT-0091')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
-        console.log("Copying " + evt.SourceId + " to " + target_id);
+        console.log(`Copying ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBSnapshotIdentifier: evt.SourceId,
           TargetDBSnapshotIdentifier: target_id,
@@ -58,36 +59,77 @@ exports.handler = async (incoming) => {
         };
         rsp = await rds.copyDBSnapshot(p0).promise();
         let target_arn = rsp.DBSnapshot.DBSnapshotArn;
-        var sfinput = {
+        let sfinput = {
           "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
+            "SnapshotType": "RDS",
             "SourceArn": target_arn
           }
         };
         let p1 = {
-          stateMachineArn: state_machine_arn,
+          stateMachineArn: sm_copy_arn,
           name: "wait4snapshot_copy_" + target_id,
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
-        console.log("wait4copy: " + JSON.stringify(sfinput));
+        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
+        break;
+      }
+
+      case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
+      case 'RDS-EVENT-0075': { // Manual Cluster Snapshot Created
+        let target_id = ((evt.EventType == 'RDS-EVENT-0169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
+        console.log(`Copying RDS Cluster ${evt.SourceId} to ${target_id}`);
+        let p0 = {
+          SourceDBClusterSnapshotIdentifier: evt.SourceId,
+          TargetDBClusterSnapshotIdentifier: target_id,
+          CopyTags: true,
+          KmsKeyId: key_arn
+        };
+        rsp = await rds.copyDBClusterSnapshot(p0).promise();
+        let target_arn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
+        let sfinput = {
+          "PollInterval": 60,
+          "event": {
+            "EventType": "snapshot-copy-completed",
+            "SnapshotType": "RDS Cluster",
+            "SourceArn": target_arn
+          }
+        };
+        let p1 = {
+          stateMachineArn: sm_copy_arn,
+          name: "wait4snapshot_copy_" + target_id,
+          input: JSON.stringify(sfinput),
+        };
+        output = await sf.startExecution(p1).promise();
+        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
         break;
       }
 
       case 'snapshot-copy-completed': { // share a previously created copy
-        console.log("Sharing " + evt.SourceId + " with " + dr_acct);
         let p2 = {
-          DBSnapshotIdentifier: evt.SourceId,
           AttributeName: 'restore',
-          ValuesToAdd: [ dr_acct ],
+          ValuesToAdd: [ dr_acct ]
         };
-        await rds.modifyDBSnapshotAttribute(p2).promise();
-        console.log("Shared " + evt.SourceId + " with " + dr_acct);
+        switch (evt.SnapshotType) {
+          case 'RDS Cluster':
+            p2.DBClusterSnapshotIdentifier = evt.SourceId;
+            await rds.modifyDBClusterSnapshotAttribute(p2).promise();
+            break;
+          case 'RDS':
+            p2.DBSnapshotIdentifier = evt.SourceId;
+            await rds.modifyDBSnapshotAttribute(p2).promise();
+            break;
+          default:
+            throw "Invalid Snapshot Type"+evt.SnapshotType;
+        }
+        console.log(`Shared ${evt.SourceId} with ${dr_acct}`);
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         var snsevent = {
           "EventType": "snapshot-copy-shared",
           "SourceArn": evt.SourceArn,
+          "SnapshotType": evt.SnapshotType,
           "TagList": rsp.TagList
         };
         let p3 = {
@@ -96,16 +138,22 @@ exports.handler = async (incoming) => {
           Message: JSON.stringify(snsevent)
         };
         output = await sns.publish(p3).promise();
-        console.log("Published: " + JSON.stringify(snsevent));
+        console.log(`Published: ${JSON.stringify(snsevent)}`);
         break;
       }
 
       case 'snapshot-delete-shared': { // delete the previously shared copy
-        let p4 = {
-          DBSnapshotIdentifier: evt.SourceId
-        };
-        output = await rds.deleteDBSnapshot(p4).promise();
-        console.log("Deleting Snapshot " + evt.SourceArn);
+        switch (evt.SnapshotType) {
+          case 'RDS Cluster':
+            output = await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: evt.SourceId }).promise();
+            break;
+          case 'RDS':
+            output = await rds.deleteDBSnapshot({ DBSnapshotIdentifier: evt.SourceId }).promise();
+            break;
+          default:
+            throw "Invalid Snapshot Type"+evt.SnapshotType;
+        }
+        console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.SourceArn}`);
         break;
       }
 
@@ -116,6 +164,7 @@ exports.handler = async (incoming) => {
     status = 200;
   } catch (e) {
     console.error(e);
+    console.log(`Raw Event: ${JSON.stringify(incoming)}`);
     output = e;
     status = 500;
   }
