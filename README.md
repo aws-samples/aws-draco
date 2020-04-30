@@ -1,18 +1,10 @@
-## License
-This code is licensed under the MIT-0 License. See the LICENSE file.
+# Introduction
 
-# Copyright
-
-Amazon.com, Inc. or its affiliates. All Rights Reserved.
-SPDX-License-Identifier: Apache-2.0
-
-Author: Nick Townsend (nicktown@amazon.com)
-
-# Notes
-
-The DR Account Copying system (DRACO) is a skeleton application built to address a common need - that of moving
-copies of database snapshots to a separate DR account. Although this problem has been
-addressed before (see [this AWSLabs Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to implementing an event-based and fully serverless solution:
+The DR Account Copying system (DRACO) is a skeleton application built to address a common
+need - that of moving copies of database snapshots to a separate DR account. Although this
+problem has been addressed before (see [this AWSLabs
+Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to implementing
+an event-based and fully serverless solution:
 
 * You can add other types of snapshots to be backed up by listening for the appropriate events.
 * You can easily parallelize these long running tasks in a way that is difficult with
@@ -24,52 +16,47 @@ a core part of the future AWS strategy we expect this situation to change. Where
 is not available you can write a polling mechanism to generate them artificially. DRACO
 illustrates this approach using the `wait4copy` state machine.
 
+## License
+This code is licensed under the MIT-0 License. See the LICENSE file.
+
+## Copyright
+
+Amazon.com, Inc. or its affiliates. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Author: Nick Townsend (nicktown@amazon.com)
+
 ## Diagram
 
-![Enter the Dragon](https://github.com/aws-samples/aws-draco/raw/master/doc/Draco.png "The
+![The Dragon](https://github.com/aws-samples/aws-draco/raw/master/doc/Draco.png "The
 DRACO Event Flow")
 
-## Note on CloudFormation Templates
+## Usage
 
-The names of the Producer and Consumer SNS topics are hardcoded within the account and
-region as 'DracoProducer' and 'DracoConsumer'. This is to avoid a circular dependency
-between the producer and consumer stacks.
+Once installed DRACO will copy every snapshot taken in the designated 'Production' account
+across to the designated 'Disaster Recovery' account and re-encrypt them with a key known
+only to the DR account. There they will accumulate continuously, subject to a retention
+policy. The retention policy for a database is determined by the tag `Draco_Lifecycle`
+which must take on one of several predetermined values:
 
-### KMS Permissions
+* `Test`: This retains the most recent 5 days
+* `Standard`: This retains the moste recent daily for a week, the most recent weeklies for
+  a month, the most recent monthlies for a year, and the most recent yearly for 7 years.
 
-Note that the KMS permissions used in the code are not minimalist. You may wish to curtail
-them further.
+After a snapshot is copied to DR, all of the snapshots of that type in the DR account are
+reviewed and the **current** policy for the source database is applied. This allows the
+retention policy to be altered and automatically propagate to the DR account.
 
-## Tags
+# Installation
 
-DRACO makes use of tags in two ways:
+First clone the repository and change into the directory:
 
-* To determine the lifecycle policy on the consumer side DRACO relies on tagging the
-  database instance with the tag 'Draco_Lifecycle'. The value of this tag determines the
-  code path in the consumer lambda function that deletes previous snapshots.
-* In the ordinary way you can specify a tag key and value to add to the snapshots in the
-  consumer (DR) account.
+  ```bash
+  git clone https://github.com/aws-samples/aws-draco.git
+  cd aws-draco
+  ```
 
-Note that database tags are copied to a snapshot by default. However tags cannot be copied
-from a shared (or public) snapshot so the DR copy of the snapshot obtains it's tags via
-the SNS message `snapshot-copy-shared`. When creating the DR copy it adds the configured
-Draco key and value.
-
-## The Code
-
-The code is written in NodeJS. There is a Ruby Rakefile that simplifies the development
-process with tasks to set the environment and upload the code to an S3 bucket for
-deployment using the CloudFormation console.
-
-## Quickstart
-
-Here's the quickest way to start:
-
-* After checking out the repository create your own configuration file by copying
-  `config.yaml.sample` to `config.yaml`. Edit this file as appropriate. Note that the
-  variables in this file can be overridden using environment variables of the same name.
-
-* Setup the Ruby Environment:
+## Setup the Ruby Environment:
 
 ```bash
     sudo gem install bundle
@@ -77,14 +64,29 @@ Here's the quickest way to start:
     bundle install
 ```
 
-* If you want to be able to modify the functions, then create an S3 bucket to hold your copies of the code.
-  Otherwise use the existing bucket. When creating a bucket make sure that the bucket policy
-  allows access for both the source (Producer) and target (Disaster Recovery) accounts.
-  Assuming you've created `config.yaml` you can use the following command to do this:
+## Configuration
+
+After cloning the repository create your own configuration file by copying
+`config.yaml.sample` to `config.yaml`. Edit this file as appropriate. Note that the
+variables in this file will be overridden if an environment variable exists with the same
+name.
+
+If you want to be able to modify the lambda functions, perhaps to add a new lifecycle,
+then you will need to create an S3 bucket to hold your copies of the code. Update
+`config.yaml` with your chosen bucket name and execute:
 
 ```bash
-    bundle exec rake create_bucket
+    bundle exec rake setup_bucket
 ```
+
+This sets the bucket and lifecycle policies to allow access for both the source (Producer)
+and target (Disaster Recovery) accounts and for the code versions to be automatically
+expired.
+
+  If you just want to use the existing code unchanged then leave the default bucket ('draco')
+  in `config.yaml`.
+
+### Update any Lambda code changes (optional)
 
 * Upload the code to the bucket:
 
@@ -92,28 +94,81 @@ Here's the quickest way to start:
     bundle exec rake upload
 ```
 
+## Create the CloudFormation Stacks
+
+The names of the Producer and Consumer SNS topics are hardcoded within the account and
+region as 'DracoProducer' and 'DracoConsumer'. This is to avoid a circular dependency
+between the producer and consumer stacks. Create them either from the console or the
+command line as follows:
+
+### From the Console
+
 * Sign in to the CloudFormation console __in the source account__ and create a stack using the
   `producer.yaml` template.
 
 * Sign in to the CloudFormation console __in the disaster recovery account__ and create a
   stack using the `consumer.yaml` template.
 
-* Alternatively, instead of using the console to creat the CloudFormation Stacks, you can
-  use the command line. Make sure that you have correctly configured `config.yaml` (or the
-  environment) to set the appropriate AWS_PROFILE and accounts. Then issue the command:
-    `bundle exec rake create:producer`
-  Switch to the DR Account (by changing AWS_PROFILE) and issue the command:
-    `bundle exec rake create:consumer`
+In both cases note that you will have to change the default input parameters if you have
+made any changes.
 
-* Watch the DR copies accumulate!
+### From the Command Line
+
+Make sure that `config.yaml` is correctly configured. Note that you can change
+`AWS_PROFILE` either by exporting it directly using the shell (`export AWS_PROFILE=zzzz`)
+or by updating `config.yaml`. Then:
+
+* Ensure that `AWS_PROFILE` is set to the producer account
+* Issue the command: `bundle exec rake create:producer`
+* Switch `AWS_PROFILE` to the DR Account
+* Issue the command: `bundle exec rake create:consumer`
+
+## Operation
+
+DRACO uses a tag on the database instance to set the lifecycle policy. You must ensure
+that the copying of tags to snapshots is enabled for the database so that DRACO can
+propagate the chosen lifecycle. This does not need to be done prior to starting DRACO as
+the lifecycle is taken from the most current snapshot, and so can be added or changed
+subsequently.
+
+Set the tag `Draco_Lifecycle` on the database instance to one of the supported lifecycles
+described above:
+
+* `Test`, or
+* `Standard`
+
+Note that you can additionally specify a tag key and value that will be added to the
+snapshots created in the consumer (DR) account. Set these in `config.yaml`.
+
+As soon as the stacks are created, the RDS events will be subscribed to, and so will
+copy any __new__ snapshots taken in the production account across to the DR account.
+
+When a new snapshot is copied all snapshots of the same type are subject to the lifecycle
+policy and potentially deleted.
+
+### Deletion and Dry Run
+
+However, as a safety measure, the code __will not actually delete any snapshots__ until
+the environment variable `NO_DRY_RUN` is set in the Lambda function. This should be done
+manually via the console, after checking the CloudWatch logs to make sure that no vital
+snapshots would be removed!
+
+## Note on Tags
+
+Normally tags cannot be copied from a shared (or public) snapshot. However DRACO sends the
+source tags via the SNS message `snapshot-copy-shared`, from where they are added to the
+DR snapshot along with the Draco specific tag specified in `config.yaml`.
 
 ## Advanced Use
 
-### Dry Run
+The code is written in NodeJS. There is a Ruby Rakefile that simplifies the development
+process with tasks to set the environment and upload the code to an S3 bucket for
+deployment using the CloudFormation console.
 
-The code will not actually delete any snapshots until the environment variable NO_DRY_RUN
-is set in the Lambda function. This must be done manually, after checking the logs to make
-sure that no vital snapshots would be removed!
+### KMS Permissions
+
+Note that the KMS permissions used in the code are not minimalist. You may wish to curtail
+them further.
 
 ### Rake Tasks
 
