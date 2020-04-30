@@ -127,7 +127,7 @@ Resources:
               "Parameters": {
                 "iterator.$": "$.output.body.iterator",
                 "SourceArn.$": "$.event.SourceArn",
-                "Cluster.$": "$.event.Cluster"
+                "SnapshotType.$": "$.event.SnapshotType"
               },
               "ResultPath": "$.output",
               "Next": "Wait"

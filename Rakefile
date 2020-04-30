@@ -176,9 +176,12 @@ namespace :event do
 	res = rds.describe_db_snapshots(db_snapshot_identifier: snapshot_id);
 	snapshot_arn = res[:db_snapshots].first[:db_snapshot_arn]
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
-	topic_arn = ($role == 'Producer' ? ENV['PROD_TOPIC_ARN']: ENV['DR_TOPIC_ARN']) or raise "#{$role} Topic not set"
+	topic_arn = ($role == 'Producer' ? ENV['PROD_TOPIC_ARN']: ENV['DR_TOPIC_ARN'])
 	topic = sns.topic(topic_arn)
-	event = { 'EventType': 'snapshot-copy-completed', 'SourceArn': snapshot_arn, 'TargetArn': 'fake' }
+	event = { 'EventType': 'snapshot-copy-completed',
+		  'SnapshotType': 'RDS',
+		  'SourceArn': snapshot_arn,
+		  'TargetArn': 'fake' }
 	topic.publish({
 	    subject: 'DRACO Event',
 	    message: event.to_json
@@ -195,7 +198,9 @@ namespace :event do
 	snapshot_arn = res[:db_snapshots].first[:db_snapshot_arn]
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
 	topic = sns.topic(ENV['DR_TOPIC_ARN'])
-	event = { 'EventType': 'snapshot-copy-shared', 'SourceArn': snapshot_arn }
+	event = {   'EventType': 'snapshot-copy-shared',
+		    'SnapshotType': 'RDS',
+		    'SourceArn': snapshot_arn }
 	topic.publish({
 	    subject: 'DRACO Event',
 	    message: event.to_json
@@ -209,7 +214,10 @@ namespace :event do
 	puts "Snapshot: #{snapshot_id}"
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
 	topic = sns.topic(ENV['DR_TOPIC_ARN'])
-	event = { 'EventType': 'snapshot-copy-completed', 'SourceArn': snapshot_id, 'TargetArn': snapshot_id+'-dr' }
+	event = {   'EventType': 'snapshot-copy-completed',
+		    'SnapshotType': 'RDS',
+		    'SourceArn': snapshot_id,
+		    'TargetArn': snapshot_id+'-dr' }
 	topic.publish({
 	    subject: 'DRACO Event',
 	    message: event.to_json
@@ -226,7 +234,9 @@ namespace :event do
 	snapshot_arn = res[:db_snapshots].first[:db_snapshot_arn]
 	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
 	topic = sns.topic(ENV['PROD_TOPIC_ARN'])
-	event = { 'EventType': 'snapshot-delete-shared', 'SourceArn': snapshot_arn }
+	event = {   'EventType': 'snapshot-delete-shared',
+		    'SnapshotType': 'RDS',
+		    'SourceArn': snapshot_arn }
 	topic.publish({
 	    subject: 'DRACO Event',
 	    message: event.to_json
@@ -244,7 +254,9 @@ namespace :event do
 	    snapshot_arn = res[:db_cluster_snapshots].first[:db_cluster_snapshot_arn]
 	    sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
 	    topic = sns.topic(ENV['DR_TOPIC_ARN'])
-	    event = { 'EventType': 'snapshot-copy-shared', 'SourceArn': snapshot_arn, 'Cluster': true }
+	    event = {	'EventType': 'snapshot-copy-shared',
+			'SnapshotType': 'RDS Cluster',
+			'SourceArn': snapshot_arn }
 	    topic.publish({
 		subject: 'DRACO Event',
 		message: event.to_json

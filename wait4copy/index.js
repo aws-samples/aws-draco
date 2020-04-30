@@ -15,11 +15,22 @@ exports.handler = async (event) => {
   let exhausted = (count == event.iterator.maxcount);
   try {
     if (!snapshot_arn) throw "SourceArn not provided";
-    let rsp = event.Cluster ?
-      await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: snapshot_arn}).promise():
-      await rds.describeDBSnapshots({DBSnapshotIdentifier: snapshot_arn}).promise();
-    let info = event.Cluster ? rsp.DBClusterSnapshots[0]: rsp.DBSnapshots[0];
-    console.log(info.Status + ": "+snapshot_arn);
+    var info, rsp, notfound;
+    switch (event.SnapshotType) {
+      case 'RDS Cluster':
+        notfound = "DBClusterSnapshotNotFound";
+        rsp = await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: snapshot_arn}).promise();
+        info = rsp.DBClusterSnapshots[0];
+        break;
+      case 'RDS':
+        notfound = "DBSnapshotNotFound";
+        rsp = await rds.describeDBSnapshots({DBSnapshotIdentifier: snapshot_arn}).promise();
+        info = rsp.DBSnapshots[0];
+        break;
+      default:
+        throw `Invalid Snapshot Type '${event.SnapshotType}'`;
+    }
+    console.log(`${info.Status}: ${snapshot_arn}`);
     var status = 200;
     var output = {
       "iterator": {
@@ -31,7 +42,6 @@ exports.handler = async (event) => {
       "info": info
     };
   } catch (e) {
-    let notfound = event.Cluster? "DBClusterSnapshotNotFound": "DBSnapshotNotFound";
     status = (e.name == notfound) ? 404: 500;
     console.log("status: "+status);
     console.error(e);

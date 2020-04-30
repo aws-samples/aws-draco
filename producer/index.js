@@ -38,19 +38,19 @@ exports.handler = async (incoming) => {
       case "DRACO Event":
         message = JSON.parse(record.Sns.Message);
         evt.EventType = message["EventType"];
-        evt.Cluster   = message["Cluster"];
+        evt.SnapshotType   = message["SnapshotType"];
         evt.SourceArn = message["SourceArn"];
         evt.SourceId = evt.SourceArn.split(':')[6];
         break;
       default:
         throw "Unhandled subject: " + record.Sns.Subject;
     }
-    if (process.env.DEBUG) console.log("Incoming Event: " + JSON.stringify(evt));
+    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
         let target_id = ((evt.EventType == 'RDS-EVENT-0091')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
-        console.log("Copying " + evt.SourceId + " to " + target_id);
+        console.log(`Copying ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBSnapshotIdentifier: evt.SourceId,
           TargetDBSnapshotIdentifier: target_id,
@@ -63,7 +63,7 @@ exports.handler = async (incoming) => {
           "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
-            "Cluster": false,
+            "SnapshotType": "RDS",
             "SourceArn": target_arn
           }
         };
@@ -73,14 +73,14 @@ exports.handler = async (incoming) => {
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
-        console.log("wait4copy: " + JSON.stringify(sfinput));
+        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
         break;
       }
 
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0075': { // Manual Cluster Snapshot Created
-        let target_id = ((evt.EventType == 'RDS-EVENT-00169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
-        console.log("Copying Cluster " + evt.SourceId + " to " + target_id);
+        let target_id = ((evt.EventType == 'RDS-EVENT-0169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
+        console.log(`Copying RDS Cluster ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBClusterSnapshotIdentifier: evt.SourceId,
           TargetDBClusterSnapshotIdentifier: target_id,
@@ -93,7 +93,7 @@ exports.handler = async (incoming) => {
           "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
-            "Cluster": true,
+            "SnapshotType": "RDS Cluster",
             "SourceArn": target_arn
           }
         };
@@ -103,29 +103,33 @@ exports.handler = async (incoming) => {
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
-        console.log("wait4copy: " + JSON.stringify(sfinput));
+        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
         break;
       }
 
       case 'snapshot-copy-completed': { // share a previously created copy
-        console.log("Sharing " + evt.SourceId + " with " + dr_acct);
         let p2 = {
           AttributeName: 'restore',
           ValuesToAdd: [ dr_acct ]
         };
-        if (evt.Cluster) {
-          p2.DBClusterSnapshotIdentifier = evt.SourceId;
-          await rds.modifyDBClusterSnapshotAttribute(p2).promise();
-        } else {
-          p2.DBSnapshotIdentifier = evt.SourceId;
-          await rds.modifyDBSnapshotAttribute(p2).promise();
+        switch (evt.SnapshotType) {
+          case 'RDS Cluster':
+            p2.DBClusterSnapshotIdentifier = evt.SourceId;
+            await rds.modifyDBClusterSnapshotAttribute(p2).promise();
+            break;
+          case 'RDS':
+            p2.DBSnapshotIdentifier = evt.SourceId;
+            await rds.modifyDBSnapshotAttribute(p2).promise();
+            break;
+          default:
+            throw "Invalid Snapshot Type"+evt.SnapshotType;
         }
-        console.log("Shared " + evt.SourceId + " with " + dr_acct);
+        console.log(`Shared ${evt.SourceId} with ${dr_acct}`);
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         var snsevent = {
           "EventType": "snapshot-copy-shared",
           "SourceArn": evt.SourceArn,
-          "Cluster": evt.Cluster,
+          "SnapshotType": evt.SnapshotType,
           "TagList": rsp.TagList
         };
         let p3 = {
@@ -134,15 +138,22 @@ exports.handler = async (incoming) => {
           Message: JSON.stringify(snsevent)
         };
         output = await sns.publish(p3).promise();
-        console.log("Published: " + JSON.stringify(snsevent));
+        console.log(`Published: ${JSON.stringify(snsevent)}`);
         break;
       }
 
       case 'snapshot-delete-shared': { // delete the previously shared copy
-        output = evt.Cluster?
-          await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: evt.SourceId }).promise():
-          await rds.deleteDBSnapshot({ DBSnapshotIdentifier: evt.SourceId }).promise();
-        console.log("Deleting "+(evt.Cluster ? "Cluster ": "")+"Snapshot " + evt.SourceArn);
+        switch (evt.SnapshotType) {
+          case 'RDS Cluster':
+            output = await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: evt.SourceId }).promise();
+            break;
+          case 'RDS':
+            output = await rds.deleteDBSnapshot({ DBSnapshotIdentifier: evt.SourceId }).promise();
+            break;
+          default:
+            throw "Invalid Snapshot Type"+evt.SnapshotType;
+        }
+        console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.SourceArn}`);
         break;
       }
 
@@ -153,7 +164,7 @@ exports.handler = async (incoming) => {
     status = 200;
   } catch (e) {
     console.error(e);
-    console.log("Raw Event: " + JSON.stringify(incoming));
+    console.log(`Raw Event: ${JSON.stringify(incoming)}`);
     output = e;
     status = 500;
   }
