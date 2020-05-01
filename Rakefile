@@ -84,39 +84,20 @@ end
 
 desc "Setup Bucket #{ENV['SOURCE_BUCKET']}. Allow both accounts access, setup object versioning and lifecycle"
 task :setup_bucket do
-    bucket_policy = <<~POLICY
-	{
-	    "Version": "2012-10-17",
-	    "Id": "DracoBucketPolicy",
-	    "Statement": [
-		{
-		    "Sid": "AllowSourceAndTarget",
-		    "Effect": "Allow",
-		    "Principal": {
-			"AWS": [
-			    "#{ENV['PROD_ACCT']}",
-			    "#{ENV['DR_ACCT']}"
-			]
-		    },
-		    "Action": "s3:*",
-		    "Resource": "arn:aws:s3:::#{ENV['SOURCE_BUCKET']}/*"
-		}
-	    ]
-	}
-	POLICY
     s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
     begin
 	s3.head_bucket( bucket: ENV['SOURCE_BUCKET'] )
 	print "Bucket '#{ENV['SOURCE_BUCKET']}' exists, creation skipped!"
-    rescue
+    rescue Exception => e
+	print "Head Bucket failed: #{e.inspect}"
 	s3.create_bucket( bucket: ENV['SOURCE_BUCKET'] )
 	print "Bucket '#{ENV['SOURCE_BUCKET']}' created!"
     end
-    s3.put_bucket_policy( bucket: ENV['SOURCE_BUCKET'], policy: bucket_policy)
-    puts(" Policy set to\n#{bucket_policy}")
     s3.put_bucket_versioning( bucket: ENV['SOURCE_BUCKET'],
 			      versioning_configuration: { status: "Enabled", mfa_delete: "Disabled" })
     puts("Versioning enabled")
+    s3.put_bucket_acl({bucket: ENV['SOURCE_BUCKET'], acl: "authenticated-read"})
+    puts("Authenticated read access enabled")
 
     lifecycle = {
 	rules: [
@@ -135,7 +116,6 @@ task :setup_bucket do
     s3.put_bucket_lifecycle_configuration({ bucket: ENV['SOURCE_BUCKET'], lifecycle_configuration: lifecycle})
     puts("Lifecycle set to:\n")
     pp lifecycle
-    s3.put_bucket_acl({bucket: ENV['SOURCE_BUCKET'], acl: "authenticated-read"})
 end
 
 desc "Upload Lambda packages to S3"
@@ -149,13 +129,11 @@ task :upload do
 	    puts "Zipfile for #{src} created"
 	end
 	File.open("#{tf.path}.zip", "rb") { |f|
-	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip",
-			  body: f, acl: "authenticated-read")
+	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip", body: f)
 	    puts "Lambda #{src} version: #{rsp[:version_id]}"
 	}
 	File.open("#{src}.yaml", "r") { |f|
-	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml",
-			  body: f, acl: "authenticated-read")
+	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml", body: f)
 	}
 	puts "#{src}.{yaml,zip} uploaded to s3://#{ENV['SOURCE_BUCKET']}/draco"
 	tf.unlink
