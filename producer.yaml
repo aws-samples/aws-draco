@@ -200,7 +200,7 @@ Resources:
       EventCategories:
       - creation
 
-  SnapshotEventSubscription:
+  ClusterSnapshotEventSubscription:
     Type: AWS::RDS::EventSubscription
     Properties:
       Enabled: true
