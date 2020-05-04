@@ -1,0 +1,11 @@
+{
+  "name": "DRACO",
+  "dependencies": {},
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "mocha": "^7.1.2"
+  },
+  "scripts": {
+    "test": "mocha"
+  }
+}

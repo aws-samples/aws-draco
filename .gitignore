@@ -1,5 +1,13 @@
+# For this project
+config.yaml
+
+# For Ruby
 vendor/bundle
 .bundle
 bin/rake
 .ruby-version
-config.yaml
+
+# For Node
+
+node_modules
+*.zip

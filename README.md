@@ -1,10 +1,10 @@
 # Introduction
 
 The DR Account Copying system (DRACO) is a skeleton application built to address a common
-need - that of moving copies of RDS snapshots to a separate DR account. Although this
-problem has been addressed before (see [this AWSLabs
-Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to implementing
-an event-driven and fully serverless solution:
+need - that of moving copies of RDS snapshots (including RDS Aurora Clusters) to a
+separate DR account. Although this problem has been partially addressed before (see [this
+AWSLabs Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to
+implementing an event-driven and fully serverless solution:
 
 * You can add other types of snapshots to be backed up by listening for the appropriate events.
 * You can easily parallelize these long running tasks in a way that is difficult with
@@ -39,7 +39,12 @@ only to the DR account. There they will accumulate continuously, subject to a re
 policy. The retention policy for a database is determined by the tag `Draco_Lifecycle`
 which must take on one of several predetermined values:
 
-* `Test`: This retains the most recent 5 days
+* `Test`: This retains the most recent 3 copies, irrespective of time.
+* `Weekly`: this retains a rolling 7 days,
+* `Fortnightly`: this retains a rolling 14 days,
+* `Biweekly`: this retains two, one for each of the past two weeks,
+* `Monthly`: this retains a rolling month of daily snapshots,
+* `CurrentMonth`: this retains only those snapshots in the current month,
 * `Standard`: This retains the moste recent daily for a week, the most recent weeklies for
   a month, the most recent monthlies for a year, and the most recent yearly for 7 years.
 
@@ -192,3 +197,7 @@ can see a list of these with the following command:
 
 Some of them rely on a configuration variable 'Role' in `config.yaml`. This should be set
 to either 'Producer' or 'Consumer' depending which test messages you wish to send.
+
+### Testing
+
+See the README file in the `test` directory.

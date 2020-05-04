@@ -119,7 +119,7 @@ task :setup_bucket do
 end
 
 desc "Upload Lambda packages to S3"
-task :upload do
+task :upload => :test do
     begin
     s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
     %w(producer consumer wait4copy).each do |src|
@@ -129,11 +129,13 @@ task :upload do
 	    puts "Zipfile for #{src} created"
 	end
 	File.open("#{tf.path}.zip", "rb") { |f|
-	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip", body: f)
+	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip",
+			       	body: f, acl: "authenticated-read")
 	    puts "Lambda #{src} version: #{rsp[:version_id]}"
 	}
 	File.open("#{src}.yaml", "r") { |f|
-	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml", body: f)
+	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml",
+			  body: f, acl: "authenticated-read")
 	}
 	puts "#{src}.{yaml,zip} uploaded to s3://#{ENV['SOURCE_BUCKET']}/draco"
 	tf.unlink
@@ -329,5 +331,10 @@ namespace :event do
     end # namespace :cluster
 
 end # namespace :event
+
+desc "Run unit tests"
+task :test do
+    sh "npm test"
+end
 
 # vim: ts=8 sts=4 sw=4 noet ft=ruby
