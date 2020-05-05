@@ -147,10 +147,7 @@ the lifecycle is taken from the most current snapshot, and so can be added or ch
 subsequently.
 
 Set the tag `Draco_Lifecycle` on the database instance to one of the supported lifecycles
-described above:
-
-* `Test` or
-* `Standard`
+described above.
 
 Note that you can additionally specify a tag key and value that will be added to the
 snapshots created in the consumer (DR) account. Set these in `config.yaml`.
@@ -164,7 +161,7 @@ policy and potentially deleted.
 
 ### Deletion and Dry Run
 
-However, as a safety measure, the code __will not actually delete any snapshots__ until
+As a safety measure, the code __will not actually delete any snapshots__ until
 the environment variable `NO_DRY_RUN` is set in the Lambda function. This should be done
 manually via the console, after checking the CloudWatch logs to make sure that no vital
 snapshots would be removed!
