@@ -212,6 +212,7 @@ Resources:
           TAG_VALUE: !Ref DrTagValue
       Handler: index.handler
       Runtime: nodejs12.x
+      Timeout: 60
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket

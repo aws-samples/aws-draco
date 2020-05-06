@@ -60,7 +60,6 @@ exports.handler = async (incoming) => {
         rsp = await rds.copyDBSnapshot(p0).promise();
         let target_arn = rsp.DBSnapshot.DBSnapshotArn;
         let sfinput = {
-          "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
             "SnapshotType": "RDS",
@@ -90,7 +89,6 @@ exports.handler = async (incoming) => {
         rsp = await rds.copyDBClusterSnapshot(p0).promise();
         let target_arn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
         let sfinput = {
-          "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
             "SnapshotType": "RDS Cluster",

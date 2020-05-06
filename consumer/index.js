@@ -53,7 +53,6 @@ exports.handler = async (event) => {
         }
         console.log(`${message.SnapshotType} Snapshot copy initiated: ${source_arn} to ${target_arn}`);
         let sfinput = {
-          "PollInterval": 60,
           "event": {
             "EventType": "snapshot-copy-completed",
             "SnapshotType": message.SnapshotType,

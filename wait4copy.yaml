@@ -22,6 +22,14 @@ Parameters:
     Description: The arn of the topic to notify
     Default: lambdabackup
     Type: String
+  PollInterval:
+    Description: The interval in seconds between checks
+    Default: 300
+    Type: Number
+  MaxPolls:
+    Description: The maximum number of polls
+    Default: 60
+    Type: Number
 
 Resources:
   Wait4CopyExecutionRole:
@@ -120,7 +128,7 @@ Resources:
               "Type": "Pass",
               "Result": {
                 "count": 0,
-                "maxcount": 60,
+                "maxcount": ${MaxPolls},
                 "exhausted": false
               },
               "ResultPath": "$.output.body.iterator",
@@ -139,7 +147,7 @@ Resources:
             },
             "Wait": {
               "Type": "Wait",
-              "SecondsPath": "$.PollInterval",
+              "Seconds": ${PollInterval},
               "Next": "AreWeThereYet"
             },
             "AreWeThereYet": {
@@ -160,7 +168,7 @@ Resources:
             },
             "NotifyFailure": {
               "Type": "Fail",
-              "Error": "MaxPoll",
+              "Error": "MaxPolls",
               "Cause": "Maximum number of polls exceeded"
             },
             "NotifyAvailable": {
