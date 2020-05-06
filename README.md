@@ -28,8 +28,7 @@ Author: Nick Townsend (nicktown@amazon.com)
 
 ## Diagram
 
-![The Dragon](https://github.com/aws-samples/aws-draco/raw/master/doc/Draco.png "The
-DRACO Event Flow")
+![The DRACO Event Flow](doc/Draco.png)
 
 ## Usage
 
@@ -51,6 +50,10 @@ which must take on one of several predetermined values:
 After a snapshot is copied to DR, all of the snapshots of that type in the DR account are
 reviewed and the **current** policy for the source database is applied. This allows the
 retention policy to be altered and automatically propagate to the DR account.
+
+## Costs
+
+Minimal. See the approximate [cost calculation](COST.md)
 
 # Installation
 
