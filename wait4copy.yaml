@@ -132,6 +132,11 @@ Resources:
                 "exhausted": false
               },
               "ResultPath": "$.output.body.iterator",
+              "Next": "Wait"
+            },
+            "Wait": {
+              "Type": "Wait",
+              "Seconds": ${PollInterval},
               "Next": "CheckStatus"
             },
             "CheckStatus": {
@@ -143,11 +148,6 @@ Resources:
                 "SnapshotType.$": "$.event.SnapshotType"
               },
               "ResultPath": "$.output",
-              "Next": "Wait"
-            },
-            "Wait": {
-              "Type": "Wait",
-              "Seconds": ${PollInterval},
               "Next": "AreWeThereYet"
             },
             "AreWeThereYet": {
@@ -164,7 +164,7 @@ Resources:
                   "Next": "NotifyFailure"
                 }
               ],
-              "Default": "CheckStatus"
+              "Default": "Wait"
             },
             "NotifyFailure": {
               "Type": "Fail",

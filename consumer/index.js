@@ -13,18 +13,18 @@ const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
 
-exports.handler = async (event) => {
+exports.handler = async (incoming) => {
   var target_id;
   var output = 'nothing';
   var status = 200;
 
   try {
-    if (!("Records" in event)) throw 'No records!';
-    let record = event.Records[0];
+    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (!("Records" in incoming)) throw 'No records!';
+    let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
     let message = JSON.parse(record.Sns.Message);
-    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(message)}`);
 
     let source_arn = message.SourceArn;
     let target_arn = message.TargetArn;
@@ -34,7 +34,11 @@ exports.handler = async (event) => {
     switch (message.EventType) {
       case 'snapshot-copy-shared': { // copy it
         target_id = source_arn.split(':')[6].slice(0,-3); // remove '-dr'
-        let params = { CopyTags: false, KmsKeyId: key_arn, Tags: taglist };
+        let params = { CopyTags: false, Tags: taglist };
+        if (message.Encrypted) {
+          params.KmsKeyId = key_arn;
+        }
+        console.log(`Copying ${message.Encrypted ? "(Encrypted)": ""} ${message.SnapshotType} Snapshot ${source_arn} to ${target_id}`);
         switch (message.SnapshotType) {
           case 'RDS Cluster':
             params.SourceDBClusterSnapshotIdentifier = source_arn;
@@ -51,11 +55,11 @@ exports.handler = async (event) => {
           default:
             throw "Invalid Snapshot Type"+message.SnapshotType;
         }
-        console.log(`${message.SnapshotType} Snapshot copy initiated: ${source_arn} to ${target_arn}`);
         let sfinput = {
           "event": {
             "EventType": "snapshot-copy-completed",
             "SnapshotType": message.SnapshotType,
+            "Encrypted": message.Encrypted,
             "SourceArn": target_arn,
             "TargetArn": source_arn,
             "TagList": taglist
@@ -99,7 +103,7 @@ exports.handler = async (event) => {
     }
     status = 200;
   } catch (e) {
-    console.log(`Raw Event: ${JSON.stringify(event)}`);
+    console.log(`Raw Event: ${JSON.stringify(incoming)}`);
     console.error(e);
     output = e;
     status = 500;

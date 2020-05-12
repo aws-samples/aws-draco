@@ -217,6 +217,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: draco/consumer.zip
+        S3ObjectVersion: !Ref ConsumerLambdaVersion
 
   Wait4Copy:
     Type: AWS::CloudFormation::Stack

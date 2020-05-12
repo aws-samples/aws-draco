@@ -17,6 +17,7 @@ exports.handler = async (incoming) => {
   var rsp = {};
 
   try {
+    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Unhandled source: " + record.EventSource;
@@ -45,7 +46,6 @@ exports.handler = async (incoming) => {
       default:
         throw "Unhandled subject: " + record.Sns.Subject;
     }
-    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
@@ -63,7 +63,8 @@ exports.handler = async (incoming) => {
           "event": {
             "EventType": "snapshot-copy-completed",
             "SnapshotType": "RDS",
-            "SourceArn": target_arn
+            "SourceArn": target_arn,
+            "Encrypted": ('KmsKeyId' in p0)
           }
         };
         let p1 = {
@@ -86,13 +87,22 @@ exports.handler = async (incoming) => {
           CopyTags: true,
           KmsKeyId: key_arn
         };
-        rsp = await rds.copyDBClusterSnapshot(p0).promise();
+        try {
+          rsp = await rds.copyDBClusterSnapshot(p0).promise();
+        } catch (e) {
+          if (e.name == 'InvalidParameterValue') {
+            console.log(`Copy error: ${e.message}, retrying...`);
+            delete p0.KmsKeyId;
+            rsp = await rds.copyDBClusterSnapshot(p0).promise();
+          } else throw e;
+        }
         let target_arn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
         let sfinput = {
           "event": {
             "EventType": "snapshot-copy-completed",
             "SnapshotType": "RDS Cluster",
-            "SourceArn": target_arn
+            "SourceArn": target_arn,
+            "Encrypted": ('KmsKeyId' in p0)
           }
         };
         let p1 = {
@@ -128,6 +138,7 @@ exports.handler = async (incoming) => {
           "EventType": "snapshot-copy-shared",
           "SourceArn": evt.SourceArn,
           "SnapshotType": evt.SnapshotType,
+          "Encrypted": evt.Encrypted,
           "TagList": rsp.TagList
         };
         let p3 = {
