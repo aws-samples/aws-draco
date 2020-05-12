@@ -35,47 +35,57 @@ exports.handler = async (incoming) => {
       case 'snapshot-copy-shared': { // copy it
         target_id = source_arn.split(':')[6].slice(0,-3); // remove '-dr'
         let params = { CopyTags: false, Tags: taglist };
+        let enc;
         if (message.Encrypted) {
           params.KmsKeyId = key_arn;
+          enc = "Encrypted";
+        } else {
+          enc = "Plaintext";
         }
-        console.log(`Copying ${message.Encrypted ? "(Encrypted)": ""} ${message.SnapshotType} Snapshot ${source_arn} to ${target_id}`);
-        switch (message.SnapshotType) {
-          case 'RDS Cluster':
-            params.SourceDBClusterSnapshotIdentifier = source_arn;
-            params.TargetDBClusterSnapshotIdentifier = target_id;
-            output = await rds.copyDBClusterSnapshot(params).promise();
-            target_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
-            break;
-          case 'RDS':
-            params.SourceDBSnapshotIdentifier = source_arn;
-            params.TargetDBSnapshotIdentifier = target_id;
-            output = await rds.copyDBSnapshot(params).promise();
-            target_arn = output.DBSnapshot.DBSnapshotArn;
-            break;
-          default:
-            throw "Invalid Snapshot Type"+message.SnapshotType;
-        }
-        let sfinput = {
-          "event": {
-            "EventType": "snapshot-copy-completed",
-            "SnapshotType": message.SnapshotType,
-            "Encrypted": message.Encrypted,
-            "SourceArn": target_arn,
-            "TargetArn": source_arn,
-            "TagList": taglist
+        console.log(`Copying ${enc} ${message.SnapshotType} Snapshot ${source_arn} to ${target_id}`);
+        try {
+          switch (message.SnapshotType) {
+            case 'RDS Cluster':
+              params.SourceDBClusterSnapshotIdentifier = source_arn;
+              params.TargetDBClusterSnapshotIdentifier = target_id;
+              output = await rds.copyDBClusterSnapshot(params).promise();
+              target_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
+              break;
+            case 'RDS':
+              params.SourceDBSnapshotIdentifier = source_arn;
+              params.TargetDBSnapshotIdentifier = target_id;
+              output = await rds.copyDBSnapshot(params).promise();
+              target_arn = output.DBSnapshot.DBSnapshotArn;
+              break;
+            default:
+              throw "Invalid Snapshot Type"+message.SnapshotType;
           }
-        };
-        let sfparams = {
-          stateMachineArn: state_machine_arn,
-          name: "wait4snapshot_copy_" + target_id,
-          input: JSON.stringify(sfinput),
-        };
-        output = await sf.startExecution(sfparams).promise();
-        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
-        break;
+          let sfinput = {
+            "event": {
+              "EventType": "snapshot-copy-completed",
+              "SnapshotType": message.SnapshotType,
+              "Encrypted": message.Encrypted,
+              "SourceArn": target_arn,
+              "TargetArn": source_arn,
+              "TagList": taglist
+            }
+          };
+          let sfparams = {
+            stateMachineArn: state_machine_arn,
+            name: "wait4snapshot_copy_" + target_id,
+            input: JSON.stringify(sfinput),
+          };
+          output = await sf.startExecution(sfparams).promise();
+          console.log(`Starting wait4copy: ${JSON.stringify(sfinput)}`);
+          break;
+          } catch (e) {
+            console.log(`FATAL: Copy failed (${e.name}: ${e.message}), removing source...`);
+            target_arn = source_arn;
+            // Fall through the case to the next one
+          }
       }
-
-      case 'snapshot-copy-completed': // Tell the owning account to delete
+      // Tell the owning account to delete
+      case 'snapshot-copy-completed': // eslint-disable-line no-fallthrough
         // Wait4Copy always uses SourceArn for the snapshot being created,
         // and the one being copied from is the target_arn
         //

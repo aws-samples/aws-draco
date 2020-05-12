@@ -73,7 +73,7 @@ exports.handler = async (incoming) => {
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
-        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
+        console.log(`Started wait4copy: ${JSON.stringify(sfinput)}`);
         break;
       }
 
@@ -111,7 +111,7 @@ exports.handler = async (incoming) => {
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
-        console.log(`wait4copy: ${JSON.stringify(sfinput)}`);
+        console.log(`Started wait4copy: ${JSON.stringify(sfinput)}`);
         break;
       }
 
