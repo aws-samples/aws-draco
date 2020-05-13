@@ -37,15 +37,13 @@ exports.handler = async (incoming) => {
         evt.SourceId = message["Source ID"];
         break;
       case "DRACO Event":
-        message = JSON.parse(record.Sns.Message);
-        evt.EventType = message["EventType"];
-        evt.SnapshotType   = message["SnapshotType"];
-        evt.SourceArn = message["SourceArn"];
+        evt = JSON.parse(record.Sns.Message);
         evt.SourceId = evt.SourceArn.split(':')[6];
         break;
       default:
         throw "Unhandled subject: " + record.Sns.Subject;
     }
+    // 'incoming' is now normalized into 'evt'
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created

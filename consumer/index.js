@@ -24,27 +24,27 @@ exports.handler = async (incoming) => {
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
-    let message = JSON.parse(record.Sns.Message);
+    let evt = JSON.parse(record.Sns.Message);
 
-    let source_arn = message.SourceArn;
-    let target_arn = message.TargetArn;
+    let source_arn = evt.SourceArn;
+    let target_arn = evt.TargetArn;
     // cannot copy tags on shared (or public) snapshots so use ones passed in message
-    let taglist = message.TagList || [];
+    let taglist = evt.TagList || [];
     taglist.push({ Key: tagkey, Value: tagval });
-    switch (message.EventType) {
+    switch (evt.EventType) {
       case 'snapshot-copy-shared': { // copy it
         target_id = source_arn.split(':')[6].slice(0,-3); // remove '-dr'
         let params = { CopyTags: false, Tags: taglist };
         let enc;
-        if (message.Encrypted) {
+        if (evt.Encrypted) {
           params.KmsKeyId = key_arn;
           enc = "Encrypted";
         } else {
           enc = "Plaintext";
         }
-        console.log(`Copying ${enc} ${message.SnapshotType} Snapshot ${source_arn} to ${target_id}`);
+        console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${source_arn} to ${target_id}`);
         try {
-          switch (message.SnapshotType) {
+          switch (evt.SnapshotType) {
             case 'RDS Cluster':
               params.SourceDBClusterSnapshotIdentifier = source_arn;
               params.TargetDBClusterSnapshotIdentifier = target_id;
@@ -58,13 +58,13 @@ exports.handler = async (incoming) => {
               target_arn = output.DBSnapshot.DBSnapshotArn;
               break;
             default:
-              throw "Invalid Snapshot Type"+message.SnapshotType;
+              throw "Invalid Snapshot Type"+evt.SnapshotType;
           }
           let sfinput = {
             "event": {
               "EventType": "snapshot-copy-completed",
-              "SnapshotType": message.SnapshotType,
-              "Encrypted": message.Encrypted,
+              "SnapshotType": evt.SnapshotType,
+              "Encrypted": evt.Encrypted,
               "SourceArn": target_arn,
               "TargetArn": source_arn,
               "TagList": taglist
@@ -91,7 +91,7 @@ exports.handler = async (incoming) => {
         //
         var snsevent = {
           "EventType": "snapshot-delete-shared",
-          "SnapshotType": message.SnapshotType,
+          "SnapshotType": evt.SnapshotType,
           "SourceArn": target_arn
         };
         var p2 = {
@@ -102,7 +102,7 @@ exports.handler = async (incoming) => {
         output = await sns.publish(p2).promise();
         console.log(`Published: ${JSON.stringify(snsevent)}`);
         try {
-          await lifeCycle(message.SnapshotType);
+          await lifeCycle(evt.SnapshotType);
         } catch (e) {
           console.error(e);
         }
