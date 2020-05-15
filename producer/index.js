@@ -17,7 +17,7 @@ exports.handler = async (incoming) => {
   var rsp = {};
 
   try {
-    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (process.env.DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Unhandled source: " + record.EventSource;
@@ -44,6 +44,7 @@ exports.handler = async (incoming) => {
         throw "Unhandled subject: " + record.Sns.Subject;
     }
     // 'incoming' is now normalized into 'evt'
+    if (process.env.DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
@@ -171,7 +172,7 @@ exports.handler = async (incoming) => {
     status = 200;
   } catch (e) {
     console.error(e);
-    console.log(`Raw Event: ${JSON.stringify(incoming)}`);
+    console.error(`Raw Event: ${JSON.stringify(incoming)}`);
     output = e;
     status = 500;
   }

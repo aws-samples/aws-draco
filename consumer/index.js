@@ -19,12 +19,13 @@ exports.handler = async (incoming) => {
   var status = 200;
 
   try {
-    if (process.env.DEBUG) console.log(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (process.env.DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
     let evt = JSON.parse(record.Sns.Message);
+    if (process.env.DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
 
     let source_arn = evt.SourceArn;
     let target_arn = evt.TargetArn;
@@ -79,7 +80,7 @@ exports.handler = async (incoming) => {
           console.log(`Starting wait4copy: ${JSON.stringify(sfinput)}`);
           break;
           } catch (e) {
-            console.log(`FATAL: Copy failed (${e.name}: ${e.message}), removing source...`);
+            console.error(`Copy failed (${e.name}: ${e.message}), removing source...`);
             target_arn = source_arn;
             // Fall through the case to the next one
           }
@@ -113,8 +114,8 @@ exports.handler = async (incoming) => {
     }
     status = 200;
   } catch (e) {
-    console.log(`Raw Event: ${JSON.stringify(incoming)}`);
     console.error(e);
+    console.error(`Raw Event: ${JSON.stringify(incoming)}`);
     output = e;
     status = 500;
   }
