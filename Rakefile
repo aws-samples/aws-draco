@@ -146,6 +146,7 @@ task :upload => :test do
     end
 end
 
+desc "Get current code S3 Object versions"
 task :get_versions do
     get_lambda_versions.each {|k,v| puts "#{k}: version: #{v}"}
 end
