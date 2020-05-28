@@ -1,0 +1,22 @@
+{
+  "version": "0",
+  "id": "6610258f-d7de-1c08-1aee-623fc9f77d33",
+  "detail-type": "EBS Snapshot Notification",
+  "source": "aws.ec2",
+  "account": "111111111111",
+  "time": "2020-05-28T09:25:38Z",
+  "region": "eu-west-2",
+  "resources": [
+    "arn:aws:ec2::eu-west-2:snapshot/snap-0c939a8c7bc7761cd"
+  ],
+  "detail": {
+    "event": "createSnapshot",
+    "result": "succeeded",
+    "cause": "",
+    "request-id": "",
+    "snapshot_id": "arn:aws:ec2::eu-west-2:snapshot/snap-0c939a8c7bc7761cd",
+    "source": "arn:aws:ec2::eu-west-2:volume/vol-0c852dcddc84ed956",
+    "startTime": "2020-05-28T09:24:59.306Z",
+    "endTime": "2020-05-28T09:25:38.210Z"
+  }
+}

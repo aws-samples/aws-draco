@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 //
 const AWS = require('aws-sdk');
+const ec2 = new AWS.EC2({apiVersion: '2016-11-15'});
 const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
@@ -18,30 +19,36 @@ exports.handler = async (incoming) => {
 
   try {
     if (process.env.DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
-    if (!("Records" in incoming)) throw 'No records!';
-    let record = incoming.Records[0];
-    if (record.EventSource != "aws:sns") throw "Unhandled source: " + record.EventSource;
     let evt = {};
-    var event_type;
-    switch (record.Sns.Subject) {
-      case "RDS Notification Message":
-        if (record.Sns.Message.startsWith("This")) {
-          evt.EventType = "rds-startup";
-          evt.Message = record.Sns.Message;
+    if ("Records" in incoming) {
+      let record = incoming.Records[0];
+      if (record.EventSource != "aws:sns") throw "Unhandled source: " + record.EventSource;
+      switch (record.Sns.Subject) {
+        case "RDS Notification Message": {
+          if (record.Sns.Message.startsWith("This")) {
+            evt.EventType = "rds-startup";
+            evt.Message = record.Sns.Message;
+            break;
+          }
+          message = JSON.parse(record.Sns.Message);
+          let event_type = message["Event ID"].split('#',2)[1];
+          if (!event_type.match(/[0-9]{4}$/)) throw "Unhandled event type: " + event_type;
+          evt.EventType = event_type;
+          evt.SourceId = message["Source ID"];
           break;
         }
-        message = JSON.parse(record.Sns.Message);
-        event_type = message["Event ID"].split('#',2)[1];
-        if (!event_type.match(/[0-9]{4}$/)) throw "Unhandled event type: " + event_type;
-        evt.EventType = event_type;
-        evt.SourceId = message["Source ID"];
-        break;
-      case "DRACO Event":
-        evt = JSON.parse(record.Sns.Message);
-        evt.SourceId = evt.SourceArn.split(':')[6];
-        break;
-      default:
-        throw "Unhandled subject: " + record.Sns.Subject;
+        case "DRACO Event":
+          evt = JSON.parse(record.Sns.Message);
+          evt.SourceId = evt.SourceArn.split(':')[6];
+          break;
+        default:
+          throw "Unhandled subject: " + record.Sns.Subject;
+      }
+    } else {
+      if(!("version" in incoming) || incoming.version != "0") throw 'Unrecognized input format!';
+      evt = incoming;
+      evt.EventType = incoming["source"] + "." + incoming.detail["event"];
+      evt.SourceId = incoming.detail.snapshot_id;
     }
     // 'incoming' is now normalized into 'evt'
     if (process.env.DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
@@ -165,8 +172,31 @@ exports.handler = async (incoming) => {
         break;
       }
 
+      case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
+        let region = evt.detail.snapshot_id.split(':')[4];
+        evt.SnapshotType = 'EBS';
+        let TagSpec = {
+          ResourceType: "snapshot",
+          Tags: [{"Key":"Draco", "Value":"yes"}]
+        };
+        var params = {
+          Description: `Draco snapshot of ${evt.detail.source} at #{evt.detail.endTime}`,
+          DestinationRegion: region,
+          SourceRegion: region,
+          SourceSnapshotId: evt.detail.snapshot_id.split(':snapshot/')[1],
+          Encrypted: true,
+          KmsKeyId: key_arn,
+          TagSpecifications: [TagSpec]
+        };
+        output = await ec2.copySnapshot(params).promise();
+
+        console.log(`Copied ${evt.SnapshotType} Snapshot ${evt.SourceArn} to ${output.SnapshotId}`);
+        break;
+      }
+
       default:
-        output = 'Unhandled event: ' + event_type;
+        output = 'Unhandled event: ' + evt.EventType;
+        console.log(`Unhandled Event: ${JSON.stringify(evt)}`);
         break;
     }
     status = 200;

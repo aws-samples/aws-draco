@@ -126,6 +126,8 @@ Resources:
                 - rds:DescribeDBSnapshots
                 - rds:DescribeDBClusterSnapshots
                 - rds:ListTagsForResource
+                - ec2:CopySnapshot
+                - ec2:CreateTags
               Resource: '*'
         - PolicyName: AllowPublish2DrTopic
           PolicyDocument:
@@ -208,6 +210,30 @@ Resources:
       SnsTopicArn: !Ref SnapshotTopic
       EventCategories:
       - backup
+
+  EventBridgeSubscriptions:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EBS Snapshot Notification
+        detail:
+          event:
+            - createSnapshot
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SnapshotHandlerLambda.Arn
+          Id: DracoHandler
+
+  EventInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventBridgeSubscriptions.Arn
+      FunctionName: !GetAtt SnapshotHandlerLambda.Arn
 
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
