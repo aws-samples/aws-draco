@@ -109,6 +109,11 @@ Resources:
                 - rds:DescribeDBSnapshots
                 - rds:DescribeDBClusterSnapshots
                 - rds:ListTagsForResource
+                - ec2:CopySnapshot
+                - ec2:CreateTags
+                - ec2:DescribeTags
+                - ec2:DescribeSnapshots
+                - ec2:DeleteSnapshot
               Resource: '*'
         - PolicyName: AllowPublish2ProducerTopic
           PolicyDocument:

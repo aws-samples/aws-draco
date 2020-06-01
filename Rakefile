@@ -197,7 +197,7 @@ namespace :update do
     task :producer do
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	code_versions = get_lambda_versions
-	cfn.update_stack(
+	rsp = cfn.update_stack(
 	    stack_name: "draco-producer",
 	    template_body: File.read('producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
@@ -211,12 +211,13 @@ namespace :update do
 		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
 	    ]
 	);
+	puts("Updating: #{rsp[:stack_id].split(':')[5]}")
     end
     desc "Update Consumer Stack (run in DR account)"
     task :consumer do
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	code_versions = get_lambda_versions
-	cfn.update_stack(
+	rsp = cfn.update_stack(
 	    stack_name: "draco-consumer",
 	    template_body: File.read('consumer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
@@ -230,6 +231,7 @@ namespace :update do
 		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
 	    ]
 	);
+	puts("Updating: #{rsp[:stack_id].split(':')[5]}")
     end
 end
 

@@ -1,10 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 #
-# This sets up the AWS infrastructure to copy RDS DB Snapshots off to a separate DR account
-# This template is for the consumer of the snapshots
-# Remember that to give the producer account publish access to the DR topic you need both an identity policy on the source side and a resource policy on this side!
-# Show ABAC for the DR account to delete the snapshot copies in the Source account.
+# State Machine to wait for Snapshot copy operations to complete.
 #
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "A CloudFormation Template for a State Machine that waits for copies to complete"
@@ -62,6 +59,7 @@ Resources:
               Action:
                 - rds:DescribeDBSnapshots
                 - rds:DescribeDBClusterSnapshots
+                - ec2:DescribeSnapshots
               Resource: '*'
   
   Wait4CopyLambda:

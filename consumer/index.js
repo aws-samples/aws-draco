@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 //
 const AWS = require('aws-sdk');
+const ec2 = new AWS.EC2({apiVersion: '2016-11-15'});
 const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
@@ -14,7 +15,6 @@ const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
 
 exports.handler = async (incoming) => {
-  var target_id;
   var output = 'nothing';
   var status = 200;
 
@@ -27,15 +27,15 @@ exports.handler = async (incoming) => {
     let evt = JSON.parse(record.Sns.Message);
     if (process.env.DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
 
-    let source_arn = evt.SourceArn;
-    let target_arn = evt.TargetArn;
-    // cannot copy tags on shared (or public) snapshots so use ones passed in message
+    // cannot copy tags on shared (or public) RDS snapshots or on EBS so use ones passed in message
     let taglist = evt.TagList || [];
     taglist.push({ Key: tagkey, Value: tagval });
+    let target_arn, target_id;
+    let copyfailed = undefined;
+
     switch (evt.EventType) {
       case 'snapshot-copy-shared': { // copy it
-        target_id = source_arn.split(':')[6].slice(0,-3); // remove '-dr'
-        let params = { CopyTags: false, Tags: taglist };
+        let params = { };
         let enc;
         if (evt.Encrypted) {
           params.KmsKeyId = key_arn;
@@ -43,31 +43,54 @@ exports.handler = async (incoming) => {
         } else {
           enc = "Plaintext";
         }
-        console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${source_arn} to ${target_id}`);
         try {
           switch (evt.SnapshotType) {
             case 'RDS Cluster':
-              params.SourceDBClusterSnapshotIdentifier = source_arn;
-              params.TargetDBClusterSnapshotIdentifier = target_id;
-              output = await rds.copyDBClusterSnapshot(params).promise();
-              target_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
-              break;
             case 'RDS':
-              params.SourceDBSnapshotIdentifier = source_arn;
-              params.TargetDBSnapshotIdentifier = target_id;
-              output = await rds.copyDBSnapshot(params).promise();
-              target_arn = output.DBSnapshot.DBSnapshotArn;
+              params.CopyTags = false;
+              params.Tags  = taglist;
+              target_id = evt.SourceArn.split(':')[6].slice(0,-3); // remove '-dr'
+              if (evt.SnapshotType == 'RDS') {
+                params.SourceDBSnapshotIdentifier = evt.SourceArn;
+                params.TargetDBSnapshotIdentifier = target_id;
+                output = await rds.copyDBSnapshot(params).promise();
+                target_arn = output.DBSnapshot.DBSnapshotArn;
+              }
+              else {
+                params.SourceDBClusterSnapshotIdentifier = evt.SourceArn;
+                params.TargetDBClusterSnapshotIdentifier = target_id;
+                output = await rds.copyDBClusterSnapshot(params).promise();
+                target_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
+              }
+              break;
+            case 'EBS':
+              params.SourceSnapshotId = evt.SourceArn.split(':snapshot/')[1];
+              params.Description  = `Draco snapshot of ${evt.SourceVol}`;
+              params.SourceRegion = evt.SourceArn.split(':')[4];
+              params.DestinationRegion = params.SourceRegion;
+              params.Encrypted = ('KmsKeyId' in params);
+              if (taglist.length > 0) {
+                let TagSpec = {
+                  ResourceType: "snapshot",
+                  Tags: taglist
+                };
+                params.TagSpecifications = [TagSpec];
+              }
+              output = await ec2.copySnapshot(params).promise();
+              target_id = output.SnapshotId;
+              target_arn = `arn:aws:ec2::${params.DestinationRegion}:snapshot/${target_id}`;
               break;
             default:
               throw "Invalid Snapshot Type"+evt.SnapshotType;
           }
+          console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${evt.SourceArn} to ${target_id}`);
           let sfinput = {
             "event": {
               "EventType": "snapshot-copy-completed",
               "SnapshotType": evt.SnapshotType,
               "Encrypted": evt.Encrypted,
               "SourceArn": target_arn,
-              "TargetArn": source_arn,
+              "TargetArn": evt.SourceArn,
               "TagList": taglist
             }
           };
@@ -80,8 +103,8 @@ exports.handler = async (incoming) => {
           console.log(`Starting wait4copy: ${JSON.stringify(sfinput)}`);
           break;
           } catch (e) {
-            console.error(`Copy failed (${e.name}: ${e.message}), removing source...`);
-            target_arn = source_arn;
+            copyfailed = `Copy failed (${e.name}: ${e.message})`;
+            console.error(`${copyfailed}, removing source...`);
             // Fall through the case to the next one
           }
       }
@@ -93,7 +116,8 @@ exports.handler = async (incoming) => {
         var snsevent = {
           "EventType": "snapshot-delete-shared",
           "SnapshotType": evt.SnapshotType,
-          "SourceArn": target_arn
+          "SourceArn": evt.TargetArn,
+          "Error": copyfailed
         };
         var p2 = {
           TopicArn: producer_topic_arn,
@@ -135,19 +159,24 @@ async function lifeCycle(snapshot_type) {
 
   // Collect all current snapshots and determine their age
 
-  let params = {
-    SnapshotType: 'manual',
-  };
+  let params = { };
 
   do {
     switch (snapshot_type) {
       case 'RDS Cluster':
+        params.SnapshotType = 'manual';
         rsp = await rds.describeDBClusterSnapshots(params).promise();
         snapshots = rsp.DBClusterSnapshots;
         break;
       case 'RDS':
+        params.SnapshotType = 'manual';
         rsp = await rds.describeDBSnapshots(params).promise();
         snapshots = rsp.DBSnapshots;
+        break;
+      case 'EBS': // Request all the snapshots owned by the DR account (no pagination)
+        params.OwnerIds = [ dr_acct ];
+        rsp = await ec2.describeSnapshots(params).promise();
+        snapshots = rsp.Snapshots;
         break;
       default:
         throw "Invalid Snapshot Type: "+snapshot_type;
@@ -156,27 +185,32 @@ async function lifeCycle(snapshot_type) {
     else delete params.Marker;
 
     for (const snapshot of snapshots) {
-      if (snapshot.Status != "available") continue;
+      if (snapshot_type.startsWith('RDS') && snapshot.Status != "available") continue;
+      if (snapshot_type.startsWith('EBS') && snapshot.State != "completed") continue;
 
-      var source_id, snapshot_id, snapshot_arn;
+      let source_id, snapshot_id, snapshot_arn, snapshot_date;
       switch(snapshot_type) {
         case 'RDS Cluster':
           source_id = snapshot.DBClusterIdentifier;
           snapshot_id = snapshot.DBClusterSnapshotIdentifier;
           snapshot_arn = snapshot.DBClusterSnapshotArn;
+          snapshot_date = new Date(snapshot.SnapshotCreateTime);
           break;
         case 'RDS':
           source_id = snapshot.DBInstanceIdentifier;
           snapshot_id = snapshot.DBSnapshotIdentifier;
           snapshot_arn = snapshot.DBSnapshotArn;
+          snapshot_date = new Date(snapshot.SnapshotCreateTime);
           break;
-        default:
-          throw "Invalid Snapshot Type: "+snapshot_type;
+        case 'EBS':
+          source_id = snapshot.VolumeId;
+          snapshot_id = snapshot.SnapshotId;
+          snapshot_date = new Date(snapshot.StartTime);
+          break;
       }
       if (!(source_id in sources)) {
         sources[source_id] = new Array();
       }
-      let snapshot_date = new Date(snapshot.SnapshotCreateTime);
       sources[source_id].push ({
         age: (start - snapshot_date.valueOf()) / (24  * 3600 * 1000.0),
         id:   snapshot_id,
@@ -192,10 +226,24 @@ async function lifeCycle(snapshot_type) {
       const snapshots = sources[source].sort((a,b) => a.age - b.age); // youngest first
       // Get the Tags on the most recent Snapshot
       let youngest = snapshots[0];
-      rsp = await rds.listTagsForResource({"ResourceName": youngest.arn}).promise();
+      let taglist;
+      switch (snapshot_type) {
+        case 'RDS Cluster':
+        case 'RDS':
+          rsp = await rds.listTagsForResource({"ResourceName": youngest.arn}).promise();
+          taglist = rsp.TagList;
+          break;
+        case 'EBS':
+          taglist = await getEC2SnapshotTags(youngest.id);
+          break;
+      }
       let tags = {};
-      for (let tag of rsp.TagList) {
+      for (let tag of taglist) {
         tags[tag.Key] = tag.Value;
+      }
+      if (typeof tags.Draco_Lifecycle === 'undefined') {
+        console.log(`Source: ${source} has no Draco_Lifecycle tag. Skipped`);
+        continue;
       }
       const lifecycle = tags["Draco_Lifecycle"];
       console.log(`Source: ${source} has lifecycle '${lifecycle}' with ${snapshots.length} snapshots. Youngest: ${JSON.stringify(youngest)}`);
@@ -211,13 +259,27 @@ async function lifeCycle(snapshot_type) {
               case 'RDS':
                 rsp =await rds.deleteDBSnapshot({ DBSnapshotIdentifier: snap.id }).promise();
                 break;
-              default:
-                throw "Invalid Snapshot Type: "+snapshot_type;
+              case 'EBS':
+                rsp =await ec2.deleteSnapshot({ SnapshotId: snap.id }).promise();
+                break;
             }
         }
       }
     }
   console.log("That's all folks");
+}
+
+/* EC2 Snapshot Tags have extra baggage
+ */
+async function getEC2SnapshotTags(snap_id) {
+  let p = {
+    Filters: [ { Name: "resource-id", Values: [ snap_id ] } ],
+    MaxResults: 500
+  }
+  let rsp = await ec2.describeTags(p).promise();
+  let taglist = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value }) );
+  if (process.env.DEBUG) console.debug(`Tags for ${snap_id}: ${JSON.stringify(taglist)}`);
+  return taglist;
 }
 
 // vim: sts=2 et sw=2:

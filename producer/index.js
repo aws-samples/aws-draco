@@ -56,7 +56,7 @@ exports.handler = async (incoming) => {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
         let target_id = ((evt.EventType == 'RDS-EVENT-0091')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
-        console.log(`Copying ${evt.SourceId} to ${target_id}`);
+        console.log(`Copying RDS Snapshot ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBSnapshotIdentifier: evt.SourceId,
           TargetDBSnapshotIdentifier: target_id,
@@ -86,7 +86,7 @@ exports.handler = async (incoming) => {
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0075': { // Manual Cluster Snapshot Created
         let target_id = ((evt.EventType == 'RDS-EVENT-0169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
-        console.log(`Copying RDS Cluster ${evt.SourceId} to ${target_id}`);
+        console.log(`Copying RDS Cluster Snapshot ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBClusterSnapshotIdentifier: evt.SourceId,
           TargetDBClusterSnapshotIdentifier: target_id,
@@ -121,31 +121,88 @@ exports.handler = async (incoming) => {
         break;
       }
 
+      case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
+        evt.SnapshotType = 'EBS';
+        let source_id = evt.detail.snapshot_id.split(':snapshot/')[1];
+        let taglist = await getEC2SnapshotTags(source_id);
+        let region = evt.detail.snapshot_id.split(':')[4];
+        var p0 = {
+          Description: `Draco transient snapshot of ${evt.detail.source} at ${evt.detail.endTime}`,
+          DestinationRegion: region,
+          SourceRegion: region,
+          SourceSnapshotId: source_id,
+          Encrypted: true,
+          KmsKeyId: key_arn,
+        };
+        if (taglist.length > 0) {
+          let TagSpec = {
+            ResourceType: "snapshot",
+            Tags: taglist
+          };
+          p0.TagSpecifications = [TagSpec];
+        }
+        rsp = await ec2.copySnapshot(p0).promise();
+        console.log(`Copying ${evt.SnapshotType} Snapshot ${source_id} to ${rsp.SnapshotId}`);
+
+        let sfinput = {
+          "event": {
+            "EventType": "snapshot-copy-completed",
+            "SnapshotType": "EBS",
+            "SourceArn": `arn:aws:ec2::${region}:snapshot/${rsp.SnapshotId}`,
+            "Encrypted": ('KmsKeyId' in p0),
+            "SourceVol": evt.detail.source
+          }
+        };
+        let p1 = {
+          stateMachineArn: sm_copy_arn,
+          name: "wait4snapshot_copy_" + source_id,
+          input: JSON.stringify(sfinput),
+        };
+        output = await sf.startExecution(p1).promise();
+        console.log(`Started wait4copy: ${JSON.stringify(sfinput)}`);
+        break;
+      }
+
       case 'snapshot-copy-completed': { // share a previously created copy
         let p2 = {
           AttributeName: 'restore',
           ValuesToAdd: [ dr_acct ]
         };
+        let taglist = [];
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             p2.DBClusterSnapshotIdentifier = evt.SourceId;
             await rds.modifyDBClusterSnapshotAttribute(p2).promise();
+            rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
+            taglist = rsp.TagList;
             break;
           case 'RDS':
             p2.DBSnapshotIdentifier = evt.SourceId;
             await rds.modifyDBSnapshotAttribute(p2).promise();
+            rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
+            taglist = rsp.TagList;
+            break;
+          case 'EBS':
+            p2 = {
+              Attribute: 'createVolumePermission',
+              OperationType: 'add',
+              SnapshotId: evt.SourceArn.split(':snapshot/')[1],
+              UserIds: [ dr_acct ]
+            };
+            await ec2.modifySnapshotAttribute(p2).promise();
+            taglist = await getEC2SnapshotTags(p2.SnapshotId);
             break;
           default:
-            throw "Invalid Snapshot Type"+evt.SnapshotType;
+            throw `Invalid Snapshot Type: ${evt.SnapshotType}`;
         }
-        console.log(`Shared ${evt.SourceId} with ${dr_acct}`);
-        rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
+        console.log(`Shared ${evt.SourceArn} with ${dr_acct}`);
         var snsevent = {
           "EventType": "snapshot-copy-shared",
           "SourceArn": evt.SourceArn,
           "SnapshotType": evt.SnapshotType,
           "Encrypted": evt.Encrypted,
-          "TagList": rsp.TagList
+          "SourceVol": evt.SourceVol,
+          "TagList": taglist
         };
         let p3 = {
           TopicArn: dr_topic_arn,
@@ -160,39 +217,28 @@ exports.handler = async (incoming) => {
       case 'snapshot-delete-shared': { // delete the previously shared copy
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
-            output = await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: evt.SourceId }).promise();
+            output = await rds.deleteDBClusterSnapshot({
+              DBClusterSnapshotIdentifier: evt.SourceArn.split(':')[6]
+            }).promise();
             break;
           case 'RDS':
-            output = await rds.deleteDBSnapshot({ DBSnapshotIdentifier: evt.SourceId }).promise();
+            output = await rds.deleteDBSnapshot({
+              DBSnapshotIdentifier: evt.SourceArn.split(':')[6]
+            }).promise();
+            break;
+          case 'EBS':
+            output = await ec2.deleteSnapshot({
+              SnapshotId: evt.SourceArn.split(':snapshot/')[1]
+            }).promise();
             break;
           default:
             throw "Invalid Snapshot Type"+evt.SnapshotType;
         }
+        if (evt.Error) console.error(`In DR account ${dr_acct}: ${evt.Error}`);
         console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.SourceArn}`);
         break;
       }
 
-      case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
-        let region = evt.detail.snapshot_id.split(':')[4];
-        evt.SnapshotType = 'EBS';
-        let TagSpec = {
-          ResourceType: "snapshot",
-          Tags: [{"Key":"Draco", "Value":"yes"}]
-        };
-        var params = {
-          Description: `Draco snapshot of ${evt.detail.source} at #{evt.detail.endTime}`,
-          DestinationRegion: region,
-          SourceRegion: region,
-          SourceSnapshotId: evt.detail.snapshot_id.split(':snapshot/')[1],
-          Encrypted: true,
-          KmsKeyId: key_arn,
-          TagSpecifications: [TagSpec]
-        };
-        output = await ec2.copySnapshot(params).promise();
-
-        console.log(`Copied ${evt.SnapshotType} Snapshot ${evt.SourceArn} to ${output.SnapshotId}`);
-        break;
-      }
 
       default:
         output = 'Unhandled event: ' + evt.EventType;
@@ -208,4 +254,18 @@ exports.handler = async (incoming) => {
   }
   return { statusCode: status, body: JSON.stringify(output) };
 };
+
+/* EC2 Snapshot Tags have extra baggage
+ */
+async function getEC2SnapshotTags(snap_id) {
+  let p = {
+    Filters: [ { Name: "resource-id", Values: [ snap_id ] } ],
+    MaxResults: 500
+  }
+  let rsp = await ec2.describeTags(p).promise();
+  let taglist = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
+  if (process.env.DEBUG) console.debug(`Tags for ${snap_id}: ${JSON.stringify(taglist)}`);
+  return taglist;
+}
+
 // vim: sts=2 et sw=2:
