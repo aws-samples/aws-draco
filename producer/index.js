@@ -35,6 +35,8 @@ exports.handler = async (incoming) => {
           if (!event_type.match(/[0-9]{4}$/)) throw "Unhandled event type: " + event_type;
           evt.EventType = event_type;
           evt.SourceId = message["Source ID"];
+          let arnbits = record.Sns.TopicArn.split(':');
+          evt.ArnPrefix = `arn:aws:rds:${arnbits[3]}:${arnbits[4]}`;
           break;
         }
         case "DRACO Event":
@@ -56,6 +58,12 @@ exports.handler = async (incoming) => {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
         let target_id = ((evt.EventType == 'RDS-EVENT-0091')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
+        evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
+        rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
+        if (rsp.TagList.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
+          console.log(`Ignoring RDS Snapshot ${evt.SourceId}: no Draco_Lifecycle tag`);
+          break;
+        }
         console.log(`Copying RDS Snapshot ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBSnapshotIdentifier: evt.SourceId,
@@ -86,6 +94,12 @@ exports.handler = async (incoming) => {
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0075': { // Manual Cluster Snapshot Created
         let target_id = ((evt.EventType == 'RDS-EVENT-0169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
+        evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
+        rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
+        if (rsp.TagList.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
+          console.log(`Ignoring RDS Cluster Snapshot ${evt.SourceId}: no Draco_Lifecycle tag`);
+          break;
+        }
         console.log(`Copying RDS Cluster Snapshot ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBClusterSnapshotIdentifier: evt.SourceId,
@@ -125,6 +139,10 @@ exports.handler = async (incoming) => {
         evt.SnapshotType = 'EBS';
         let source_id = evt.detail.snapshot_id.split(':snapshot/')[1];
         let taglist = await getEC2SnapshotTags(source_id);
+        if (taglist.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
+          console.log(`Ignoring ${evt.SnapshotType} Snapshot ${source_id}: no Draco_Lifecycle tag`);
+          break;
+        }
         let region = evt.detail.snapshot_id.split(':')[4];
         var p0 = {
           Description: `Draco transient snapshot of ${evt.detail.source} at ${evt.detail.endTime}`,

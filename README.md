@@ -1,10 +1,10 @@
 # Introduction
 
 The DR Account Copying system (DRACO) is a skeleton application built to address a common
-need - that of moving copies of RDS snapshots (including RDS Aurora Clusters) to a
+need - that of moving copies of EBS and RDS snapshots (including RDS Aurora Clusters) to a
 separate DR account. Although this problem has been partially addressed before (see [this
 AWSLabs Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to
-implementing an event-driven and fully serverless solution:
+implementing an extensible, event-driven and fully serverless solution:
 
 * You can add other types of snapshots to be backed up by listening for the appropriate events.
 * You can easily parallelize these long running tasks in a way that is difficult with
@@ -33,10 +33,11 @@ Author: Nick Townsend (nicktown@amazon.com)
 ## Usage
 
 Once installed DRACO will copy every snapshot taken in the designated 'Production' account
-across to the designated 'Disaster Recovery' account and re-encrypt them with a key known
-only to the DR account. There they will accumulate continuously, subject to a retention
-policy. The retention policy for a database is determined by the tag `Draco_Lifecycle`
-which must take on one of several predetermined values:
+that is tagged with `Draco_Lifecycle` across to the designated 'Disaster Recovery' account
+and re-encrypt them with a key known only to the DR account. There they will accumulate
+continuously, subject to a retention policy. The retention policy for a database is
+determined by the value of the tag `Draco_Lifecycle` which must take on one of several
+predetermined values:
 
 * `Test`: This retains the most recent 3 copies, irrespective of time.
 * `Weekly`: this retains a rolling 7 days,
