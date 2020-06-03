@@ -203,7 +203,7 @@ async function lifeCycle(snapshot_type) {
           snapshot_date = new Date(snapshot.SnapshotCreateTime);
           break;
         case 'EBS':
-          source_id = snapshot.VolumeId;
+          source_id = snapshot.Description.split(':volume/')[1];
           snapshot_id = snapshot.SnapshotId;
           snapshot_date = new Date(snapshot.StartTime);
           break;
