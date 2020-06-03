@@ -32,12 +32,12 @@ Author: Nick Townsend (nicktown@amazon.com)
 
 ## Usage
 
-Once installed DRACO will copy every snapshot taken in the designated 'Production' account
-that is tagged with `Draco_Lifecycle` across to the designated 'Disaster Recovery' account
-and re-encrypt them with a key known only to the DR account. There they will accumulate
-continuously, subject to a retention policy. The retention policy for a database is
-determined by the value of the tag `Draco_Lifecycle` which must take on one of several
-predetermined values:
+Once installed DRACO will copy every EBS and RDS snapshot taken in the designated
+'Production' account that is tagged with `Draco_Lifecycle` across to the designated
+'Disaster Recovery' account and re-encrypt them with a key known only to the DR account.
+There they will accumulate continuously, subject to a retention policy. The retention
+policy for a snapshot is determined by the value of the tag `Draco_Lifecycle` which must
+take on one of several predetermined values:
 
 * `Test`: This retains the most recent 3 copies, irrespective of time.
 * `Weekly`: this retains a rolling 7 days,
@@ -49,8 +49,8 @@ predetermined values:
   a month, the most recent monthlies for a year, and the most recent yearly for 7 years.
 
 After a snapshot is copied to DR, all of the snapshots of that type in the DR account are
-reviewed and the **current** policy for the source database is applied. This allows the
-retention policy to be altered and automatically propagate to the DR account.
+reviewed and the **current** policy for the source database or volume is applied. This
+allows the retention policy to be altered and automatically propagate to the DR account.
 
 ## Costs
 
@@ -144,21 +144,20 @@ Typically only the consumer stack is updated when developing lifecycle policies.
 
 ## Operation
 
-DRACO uses a tag on the database instance to set the lifecycle policy. You must ensure
-that the copying of tags to snapshots is enabled for the database so that DRACO can
-propagate the chosen lifecycle. This does not need to be done prior to starting DRACO as
-the lifecycle is taken from the most current snapshot, and so can be added or changed
-subsequently.
+DRACO uses a tag on the database instance or EBS volume to set the lifecycle policy. In
+the RDS case you must ensure that the copying of tags to snapshots is enabled for the
+database so that DRACO can propagate the chosen lifecycle. With AWS EBS Backups this
+happens automatically. The tag `Draco_Lifecycle` must be present on a snapshot before
+DRACO will automatically copy it. Remember to do this when creating Manual EBS snapshots.
+The value used to determine the lifecycle is taken from the most recent snapshot, and so
+the retention policy can be altered subsequently.
 
-Set the tag `Draco_Lifecycle` on the database instance to one of the supported lifecycles
-described above.
+Note that you can specify an additional tag key and value (in `config.yaml`) that will be
+added to the snapshots created in the consumer (DR) account.
 
-Note that you can additionally specify a tag key and value that will be added to the
-snapshots created in the consumer (DR) account. Set these in `config.yaml`.
-
-As soon as the stacks are created, the appropriate RDS events will be subscribed to, and
+As soon as the stacks are created, the appropriate EBS and RDS events will be subscribed to, and
 so any __new__ snapshots taken in the production account will copy across to the DR
-account.
+account if appropriately tagged.
 
 When a new snapshot is copied all snapshots of the same type are subject to the lifecycle
 policy and potentially deleted.
@@ -172,9 +171,9 @@ snapshots would be removed!
 
 ## Note on Tags
 
-Normally tags cannot be copied from a shared (or public) snapshot. However DRACO sends the
-source tags via the SNS message `snapshot-copy-shared`, from where they are added to the
-DR snapshot along with the Draco specific tag specified in `config.yaml`.
+Normally tags cannot be copied from a shared (or public) RDS snapshot. However DRACO sends
+the source tags via the SNS message `snapshot-copy-shared`, from where they are added to
+the DR snapshot along with the Draco specific tag specified in `config.yaml`.
 
 ## Advanced Use
 
