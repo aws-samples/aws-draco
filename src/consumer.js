@@ -13,6 +13,7 @@ const tagval = process.env.TAG_VALUE;
 const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
+const common = require('./common.js');
 
 exports.handler = async (incoming) => {
   var output = 'nothing';
@@ -234,7 +235,7 @@ async function lifeCycle(snapshot_type) {
           taglist = rsp.TagList;
           break;
         case 'EBS':
-          taglist = await getEC2SnapshotTags(youngest.id);
+          taglist = await common.getEC2SnapshotTags(ec2, youngest.id);
           break;
       }
       let tags = {};
@@ -248,7 +249,7 @@ async function lifeCycle(snapshot_type) {
       const lifecycle = tags["Draco_Lifecycle"];
       console.log(`Source: ${source} has lifecycle '${lifecycle}' with ${snapshots.length} snapshots. Youngest: ${JSON.stringify(youngest)}`);
       let dry_run = (process.env.NO_DRY_RUN ? "": "(Dry Run) ");
-      let deletions = (await retention.Policy(snapshots, lifecycle)).filter(f => f.retain == false);
+      let deletions = (await retention.implementPolicy(snapshots, lifecycle)).filter(f => f.retain == false);
       for (const snap of deletions) {
         console.log(`${dry_run}Deleting: ${snap.id}`);
         if (dry_run.length == 0) {
@@ -267,19 +268,6 @@ async function lifeCycle(snapshot_type) {
       }
     }
   console.log("That's all folks");
-}
-
-/* EC2 Snapshot Tags have extra baggage
- */
-async function getEC2SnapshotTags(snap_id) {
-  let p = {
-    Filters: [ { Name: "resource-id", Values: [ snap_id ] } ],
-    MaxResults: 500
-  }
-  let rsp = await ec2.describeTags(p).promise();
-  let taglist = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value }) );
-  if (process.env.DEBUG) console.debug(`Tags for ${snap_id}: ${JSON.stringify(taglist)}`);
-  return taglist;
 }
 
 // vim: sts=2 et sw=2:

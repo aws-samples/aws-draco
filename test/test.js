@@ -1,4 +1,4 @@
-const retention = require('../consumer/retention.js');
+const retention = require('../src/retention.js');
 const snapshots = require('./fixtures/sample.json');
 var chai = require('chai');
 var assert = chai.assert;
@@ -8,7 +8,7 @@ var assert = chai.assert;
 describe('Retention', function() {
 
   it ('should delete according to Test policy', async function() {
-    const marked = await retention.Policy(snapshots, 'Test');
+    const marked = await retention.implementPolicy(snapshots, 'Test');
     assert.typeOf(marked, 'Array');
     let kept = marked.filter( s => s.retain).map( s => s.id );
     assert.lengthOf(kept, 3);
@@ -16,7 +16,7 @@ describe('Retention', function() {
 
   describe('with Standard policy', function() {
     it ('should work with a month', async function() {
-      const marked = await retention.Policy(snapshots, 'Standard');
+      const marked = await retention.implementPolicy(snapshots, 'Standard');
       assert.typeOf(marked, 'Array');
       let standard = require('./fixtures/standard_month.json');
       let kept = marked.filter( s => s.retain).map( s => s.id );
@@ -26,7 +26,7 @@ describe('Retention', function() {
     it ('should work with a full year', async function() {
       const fullyear = require('./fixtures/fullyear.json');
       const results = require('./fixtures/standard_fullyear.json');
-      const marked = await retention.Policy(fullyear, 'Standard');
+      const marked = await retention.implementPolicy(fullyear, 'Standard');
       assert.typeOf(marked, 'Array');
       let kept = marked.filter( s => s.retain).map( s => s.id );
       assert.deepEqual(kept, results);
@@ -35,21 +35,21 @@ describe('Retention', function() {
   });
 
   it ('should delete according to Weekly policy', async function() {
-    const marked = await retention.Policy(snapshots, 'Weekly');
+    const marked = await retention.implementPolicy(snapshots, 'Weekly');
     assert.typeOf(marked, 'Array');
     let kept = marked.filter( s => s.retain);
     assert.lengthOf(kept, 7);
   });
 
   it ('should delete according to Fortnightly policy', async function() {
-    const marked = await retention.Policy(snapshots, 'Fortnightly');
+    const marked = await retention.implementPolicy(snapshots, 'Fortnightly');
     assert.typeOf(marked, 'Array');
     let kept = marked.filter( s => s.retain).map( s => s.id );
     assert.lengthOf(kept, 14);
   });
 
   it ('should delete according to Biweekly policy', async function() {
-    const marked = await retention.Policy(snapshots, 'Biweekly');
+    const marked = await retention.implementPolicy(snapshots, 'Biweekly');
     assert.typeOf(marked, 'Array');
     let kept = marked.filter( s => s.retain);
     assert.lengthOf(kept, 2);
@@ -58,7 +58,7 @@ describe('Retention', function() {
 
   describe('with Monthly policy', function() {
     it ('should handle April', async function() {
-      const marked = await retention.Policy(snapshots, 'Monthly');
+      const marked = await retention.implementPolicy(snapshots, 'Monthly');
       assert.typeOf(marked, 'Array');
       let kept = marked.filter( s => s.retain);
       assert.lengthOf(kept, 30);
@@ -66,7 +66,7 @@ describe('Retention', function() {
 
     it ('should handle leap February', async function() {
       const leap_feb = require('./fixtures/leap_feb.json');
-      const marked = await retention.Policy(leap_feb, 'Monthly');
+      const marked = await retention.implementPolicy(leap_feb, 'Monthly');
       assert.typeOf(marked, 'Array');
       let kept = marked.filter( s => s.retain);
       assert.lengthOf(kept, 29);
@@ -74,7 +74,7 @@ describe('Retention', function() {
   });
 
   it ('should delete according to CurrentMonth policy', async function() {
-    const marked = await retention.Policy(snapshots, 'CurrentMonth');
+    const marked = await retention.implementPolicy(snapshots, 'CurrentMonth');
     assert.typeOf(marked, 'Array');
     let kept = marked.filter( s => s.retain);
     assert.lengthOf(kept, 3);

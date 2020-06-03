@@ -1,19 +1,21 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 #
-# AWS infrastructure to copy RDS DB Snapshots off to a separate DR account.
-# This template is for the CONSUMER of the snapshots ie. the DR account.
+# This sets up the AWS infrastructure to copy RDS DB Snapshots off to a separate DR account
+# This template is for the consumer of the snapshots
+# Remember that to give the producer account publish access to the DR topic you need both an identity policy on the source side and a resource policy on this side!
+# Show ABAC for the DR account to delete the snapshot copies in the Source account.
 #
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "For receiving (DR) copies of DB Snapshots from another account"
+Description: "A CloudFormation Template for Copying DB Snapshots to another (DR) account"
 
 Parameters:
   CodeBucket:
-    Description: The S3Bucket that stores the Lambdas
+    Description: The S3 bucket containing the code
     Default: draco
     Type: String
-  ConsumerLambdaVersion:
-    Description: The S3 Bucket version of the Consumer Lambda code to use
+  ProducerLambdaVersion:
+    Description: The S3 Bucket version of the Producer Lambda code to use
     Default: draco
     Type: String
   Wait4CopyLambdaVersion:
@@ -41,23 +43,24 @@ Resources:
   SnapshotEncryptionKey:
     Type: AWS::KMS::Key
     Properties:
-      Description: Key used for encrypting DR copies
+      Description: Key used for encrypting transit copies
       Enabled: true
       EnableKeyRotation: false
       KeyPolicy:
         Version: '2012-10-17'
-        Id: dr_key_policy
+        Id: transit_key_policy
         Statement:
-        - Sid: Enable DR account full access
-          Effect: Allow
-          Principal:
-            AWS: !Sub ${AWS::AccountId}
-          Action: kms:*
-          Resource: '*'
-        - Sid: Lambda to copy encrypted RDS Snapshots 
+        - Sid: Allow Source Account Full Access
           Effect: Allow
           Principal:
             AWS:
+              - !Sub ${AWS::AccountId}
+          Action: kms:*
+          Resource: '*'
+        - Sid: Lambda function to copy encrypted RDS Snapshots
+          Effect: Allow
+          Principal:
+            AWS: 
               - !GetAtt LambdaExecutionRole.Arn
           Action:
             - kms:Encrypt
@@ -69,10 +72,23 @@ Resources:
             - kms:CreateGrant
             - kms:DescribeKey
           Resource: '*'
-          
+        - Sid: DR account copy encrypted RDS Snapshots
+          Effect: Allow
+          Principal: "*"
+          Action:
+            - kms:Encrypt
+            - kms:Decrypt
+            - kms:ReEncrypt*
+            - kms:GenerateDataKey*
+            - kms:ListGrants
+            - kms:RevokeGrant
+            - kms:CreateGrant
+            - kms:DescribeKey
+          Resource: '*'
+          Condition:
+            StringEquals:
+              aws:PrincipalAccount: !Ref TargetAcct
 
-  # Permissions on kms should be tightened
-  #
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -106,36 +122,23 @@ Resources:
                 - rds:DeleteDBSnapshot
                 - rds:DeleteDBClusterSnapshot
                 - rds:ModifyDBSnapshotAttribute
+                - rds:ModifyDBClusterSnapshotAttribute
                 - rds:DescribeDBSnapshots
                 - rds:DescribeDBClusterSnapshots
                 - rds:ListTagsForResource
                 - ec2:CopySnapshot
                 - ec2:CreateTags
                 - ec2:DescribeTags
-                - ec2:DescribeSnapshots
+                - ec2:ModifySnapshotAttribute
                 - ec2:DeleteSnapshot
               Resource: '*'
-        - PolicyName: AllowPublish2ProducerTopic
+        - PolicyName: AllowPublish2DrTopic
           PolicyDocument:
             Statement:
             - Effect: Allow
               Action:
                 - sns:Publish
-              Resource: !Sub "arn:aws:sns:${AWS::Region}:${SourceAcct}:DracoProducer"
-        - PolicyName: DecryptSnapshots
-          PolicyDocument:
-            Statement:
-            - Effect: Allow
-              Action:
-              - kms:Encrypt
-              - kms:Decrypt
-              - kms:ReEncrypt*
-              - kms:GenerateDataKey*
-              - kms:ListGrants
-              - kms:RevokeGrant
-              - kms:CreateGrant
-              - kms:DescribeKey
-              Resource: '*'
+              Resource: !Sub "arn:aws:sns:${AWS::Region}:${TargetAcct}:DracoConsumer"
         - PolicyName: AllowStepfunctions
           PolicyDocument:
             Statement:
@@ -143,8 +146,6 @@ Resources:
               Action:
                 - states:StartExecution
               Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
-  
-
   
 
   SnapshotTopicPolicy:
@@ -176,23 +177,66 @@ Resources:
           Condition:
             StringEquals:
               AWS:SourceOwner: !Ref SourceAcct
-        - Sid: AllowSourcePublish
+        - Sid: AllowTargetPublish
           Effect: Allow
           Principal:
-            AWS: !Ref SourceAcct
+            AWS: !Ref TargetAcct
           Action:
             - sns:Publish
           Resource: !Ref SnapshotTopic
 
+
   SnapshotTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: DracoConsumer
       DisplayName: Topic for Snapshot Processing
+      TopicName: DracoProducer
       Subscription:
       - Endpoint: !GetAtt SnapshotHandlerLambda.Arn
         Protocol: lambda
 
+
+  SnapshotEventSubscription:
+    Type: AWS::RDS::EventSubscription
+    Properties:
+      Enabled: true
+      SourceType: db-snapshot
+      SnsTopicArn: !Ref SnapshotTopic
+      EventCategories:
+      - creation
+
+  ClusterSnapshotEventSubscription:
+    Type: AWS::RDS::EventSubscription
+    Properties:
+      Enabled: true
+      SourceType: db-cluster-snapshot
+      SnsTopicArn: !Ref SnapshotTopic
+      EventCategories:
+      - backup
+
+  EventBridgeSubscriptions:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EBS Snapshot Notification
+        detail:
+          event:
+            - createSnapshot
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SnapshotHandlerLambda.Arn
+          Id: DracoHandler
+
+  EventInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventBridgeSubscriptions.Arn
+      FunctionName: !GetAtt SnapshotHandlerLambda.Arn
 
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -202,27 +246,26 @@ Resources:
       SourceArn: !Ref SnapshotTopic
       FunctionName: !GetAtt SnapshotHandlerLambda.Arn
 
-
   SnapshotHandlerLambda:
     Type: AWS::Lambda::Function
     Properties:
-      Description: Code that copies the shared snapshot for DR 
+      Description: Code that copies the snapshot and shares it with the target
       Environment:
         Variables:
           DR_ACCT: !Ref TargetAcct
+          DR_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${TargetAcct}:DracoConsumer"
           KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
-          PRODUCER_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${SourceAcct}:DracoProducer"
-          STATE_MACHINE_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
+          SM_COPY_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
           TAG_KEY: !Ref DrTagKey
           TAG_VALUE: !Ref DrTagValue
-      Handler: index.handler
+      Handler: producer.handler
       Runtime: nodejs12.x
       Timeout: 60
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: draco/consumer.zip
-        S3ObjectVersion: !Ref ConsumerLambdaVersion
+        S3Key: draco/producer.zip
+        S3ObjectVersion: !Ref ProducerLambdaVersion
 
   Wait4Copy:
     Type: AWS::CloudFormation::Stack
@@ -234,10 +277,8 @@ Resources:
         NotifyTopicArn: !Ref SnapshotTopic
 
 Outputs:
-  DrTopicArn:
-    Value: !Ref SnapshotTopic
 
-  DrLambdaRoleArn:
-    Value: !GetAtt LambdaExecutionRole.Arn
+  ProducerTopicArn:
+    Value: !Ref SnapshotTopic
 
 # vim: sts=2 et sw=2:

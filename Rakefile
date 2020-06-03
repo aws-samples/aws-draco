@@ -122,22 +122,30 @@ desc "Upload Lambda packages to S3"
 task :upload => :test do
     begin
     s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
-    %w(producer consumer wait4copy).each do |src|
-	tf = Tempfile.new(src)
-	cd src, verbose: false do
-	    sh "zip -rq -x.* #{tf.path}.zip *", verbose: false
-	    puts "Zipfile for #{src} created"
+    manifests = {
+	producer: %w(producer.js common.js),
+	consumer: %w(consumer.js common.js retention.js),
+	wait4copy: %w(wait4copy.js)
+    }
+    manifests.each do |package, files|
+	puts("Doing #{package} package containing #{files.join(' ')}")
+	tf = Tempfile.new(package.to_s)
+	cd 'src', verbose: false do
+	    sh "zip -q #{tf.path}.zip #{files.join(' ')}", verbose: false
+	    puts "Zipfile for #{package} created"
 	end
 	File.open("#{tf.path}.zip", "rb") { |f|
-	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.zip",
+	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{package}.zip",
 			       	body: f, acl: "authenticated-read")
-	    puts "Lambda #{src} version: #{rsp[:version_id]}"
+	    puts "Lambda #{package} version: #{rsp[:version_id]}"
 	}
-	File.open("#{src}.yaml", "r") { |f|
-	    s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{src}.yaml",
-			  body: f, acl: "authenticated-read")
-	}
-	puts "#{src}.{yaml,zip} uploaded to s3://#{ENV['SOURCE_BUCKET']}/draco"
+	cd 'cloudformation', verbose: false do
+	    File.open("#{package}.yaml", "r") { |f|
+		s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{package}.yaml",
+			      body: f, acl: "authenticated-read")
+	    }
+	end
+	puts "#{package}.{yaml,zip} uploaded to s3://#{ENV['SOURCE_BUCKET']}/draco"
 	tf.unlink
     end
     rescue
@@ -158,7 +166,7 @@ namespace :create do
 	code_versions = get_lambda_versions
 	cfn.create_stack(
 	    stack_name: "draco-producer",
-	    template_body: File.read('producer.yaml'),
+	    template_body: File.read('cloudformation/producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
@@ -177,7 +185,7 @@ namespace :create do
 	code_versions = get_lambda_versions
 	cfn.create_stack(
 	    stack_name: "draco-consumer",
-	    template_body: File.read('consumer.yaml'),
+	    template_body: File.read('cloudformation/consumer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
@@ -199,7 +207,7 @@ namespace :update do
 	code_versions = get_lambda_versions
 	rsp = cfn.update_stack(
 	    stack_name: "draco-producer",
-	    template_body: File.read('producer.yaml'),
+	    template_body: File.read('cloudformation/producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
@@ -219,7 +227,7 @@ namespace :update do
 	code_versions = get_lambda_versions
 	rsp = cfn.update_stack(
 	    stack_name: "draco-consumer",
-	    template_body: File.read('consumer.yaml'),
+	    template_body: File.read('cloudformation/consumer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },

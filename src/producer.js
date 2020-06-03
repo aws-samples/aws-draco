@@ -10,6 +10,7 @@ const key_arn = process.env.KEY_ARN;
 const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
+const common = require('./common.js');
 
 exports.handler = async (incoming) => {
   var output;
@@ -138,7 +139,7 @@ exports.handler = async (incoming) => {
       case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
         evt.SnapshotType = 'EBS';
         let source_id = evt.detail.snapshot_id.split(':snapshot/')[1];
-        let taglist = await getEC2SnapshotTags(source_id);
+        let taglist = await common.getEC2SnapshotTags(ec2, source_id);
         if (taglist.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
           console.log(`Ignoring ${evt.SnapshotType} Snapshot ${source_id}: no Draco_Lifecycle tag`);
           break;
@@ -208,7 +209,7 @@ exports.handler = async (incoming) => {
               UserIds: [ dr_acct ]
             };
             await ec2.modifySnapshotAttribute(p2).promise();
-            taglist = await getEC2SnapshotTags(p2.SnapshotId);
+            taglist = await common.getEC2SnapshotTags(ec2, p2.SnapshotId);
             break;
           default:
             throw `Invalid Snapshot Type: ${evt.SnapshotType}`;
@@ -272,18 +273,5 @@ exports.handler = async (incoming) => {
   }
   return { statusCode: status, body: JSON.stringify(output) };
 };
-
-/* EC2 Snapshot Tags have extra baggage
- */
-async function getEC2SnapshotTags(snap_id) {
-  let p = {
-    Filters: [ { Name: "resource-id", Values: [ snap_id ] } ],
-    MaxResults: 500
-  }
-  let rsp = await ec2.describeTags(p).promise();
-  let taglist = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
-  if (process.env.DEBUG) console.debug(`Tags for ${snap_id}: ${JSON.stringify(taglist)}`);
-  return taglist;
-}
 
 // vim: sts=2 et sw=2:

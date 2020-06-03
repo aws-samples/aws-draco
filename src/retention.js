@@ -21,7 +21,7 @@ Date.prototype.getUTCWeekYear = function() {
 /*
  * Given a list of snapshots and the lifecycle policy, update the list with the ones to be retained
  */
-exports.Policy = async (snapshot_list, policy) => {
+exports.implementPolicy = async (snapshot_list, policy) => {
 
   let snapshots = snapshot_list.map( s => {
       let clone = { ...s };
