@@ -118,8 +118,17 @@ task :setup_bucket do
     pp lifecycle
 end
 
+desc "Lint the Cloudformation Templates"
+task :cfn_lint do
+    %w(producer consumer wait4copy).each do |template|
+	cd "cloudformation" do
+	    sh "cfn-lint -t #{template}.yaml"
+	end
+    end
+end
+
 desc "Upload Lambda packages to S3"
-task :upload => :test do
+task :upload => [:cfn_lint, :test] do
     begin
     s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
     manifests = {

@@ -65,13 +65,23 @@ git clone https://github.com/aws-samples/aws-draco.git
 cd aws-draco
 ```
 
-## Setup the Ruby Environment:
+## Setup the Environment:
+
+### Ruby
 
 ```bash
 sudo gem install bundle
 bundle config set path .bundle
 bundle install
 ```
+
+### Cloudformation Linting
+
+Before uploading the CloudFomration templates the Rakefile will call the 'cfn_lint' task,
+for this to succeed, install the [AWS CloudFormation
+Linter](https://github.com/aws-cloudformation/cfn-python-lint).
+
+On a MacOS system use the command: `brew install cfn-lint`
 
 ## Configuration
 

@@ -150,13 +150,11 @@ Resources:
 
   SnapshotTopicPolicy:
     Type: AWS::SNS::TopicPolicy
-    DependsOn:
-      - SnapshotTopic
     Properties:
       Topics:
         - !Ref SnapshotTopic
       PolicyDocument:
-        Version: '2008-10-17'
+        Version: '2012-10-17'
         Id: SetupSnapshotTopic
         Statement:
         - Sid: Defaults
