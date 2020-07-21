@@ -6,6 +6,12 @@
     "date": "2020-05-03T22:31:18.309Z"
   },
   {
+    "age": 0.34661103009259258,
+    "id": "pgdracotest-2020-05-03-20-20",
+    "arn": "arn:aws:rds:eu-west-2:166824542191:snapshot:pgdracotest-2020-05-03-20-20",
+    "date": "2020-05-03T20:31:18.309Z"
+  },
+  {
     "age": 1.247027974537037,
     "id": "pgdracotest-2020-05-02-22-20",
     "arn": "arn:aws:rds:eu-west-2:166824542191:snapshot:pgdracotest-2020-05-02-22-20",

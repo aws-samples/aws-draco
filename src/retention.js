@@ -59,19 +59,16 @@ exports.implementPolicy = async (snapshot_list, policy) => {
           week = s.week;
           weeklies += 1;
           s.retain = true;
-          continue;
         }
         if (s.month != month && monthlies < 12) {
           month = s.month;
           monthlies += 1;
           s.retain = true;
-          continue;
         }
         if (s.year != year && yearlies < MAX_YEARS) {
           yearlies += 1;
           year = s.year;
           s.retain = true;
-          continue;
         }
       }
       break;
