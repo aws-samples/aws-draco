@@ -120,6 +120,26 @@ exports.implementPolicy = async (snapshot_list, policy) => {
       }
       break;
     }
+    case 'SemiMonthly': { // Keep two weeks of dailies then two weeklies (total 16)
+      let date = -1;
+      let week = -1;
+      let dailies = 0;
+      let weeklies = 0;
+      for (let s of snapshots) {
+        s.retain = false;
+        if (s.date != date) {
+          date = s.date;
+          dailies += 1;
+          if (dailies <= 14) s.retain = true;
+          if (s.week != week) {
+            week = s.week;
+            weeklies += 1;
+            if (weeklies <= 4) s.retain = true;
+          }
+        }
+      }
+      break;
+    }
     case 'Monthly': { // Keep a month of dailies
       let date = -1;
       let monthdatetick = (snapshots[0].year * 10000) + (snapshots[0].month-1) * 100 + snapshots[0].date;
