@@ -61,10 +61,13 @@ exports.handler = async (incoming) => {
         let target_id = ((evt.EventType == 'RDS-EVENT-0091')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
-        if (rsp.TagList.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
-          console.log(`Ignoring RDS Snapshot ${evt.SourceId}: no Draco_Lifecycle tag`);
+        let lifecycleTag = rsp.TagList.find(tag => tag.Key == 'Draco_Lifecycle')
+        if (lifecycleTag === undefined) {
+          console.warn(`Ignoring RDS Snapshot ${evt.SourceId}: no Draco_Lifecycle tag`);
           break;
         }
+        if (lifecycleTag.Value.toLowerCase() == 'ignore') break;
+
         console.log(`Copying RDS Snapshot ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBSnapshotIdentifier: evt.SourceId,
@@ -97,10 +100,13 @@ exports.handler = async (incoming) => {
         let target_id = ((evt.EventType == 'RDS-EVENT-0169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
-        if (rsp.TagList.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
-          console.log(`Ignoring RDS Cluster Snapshot ${evt.SourceId}: no Draco_Lifecycle tag`);
+        let lifecycleTag = rsp.TagList.find(tag => tag.Key == 'Draco_Lifecycle')
+        if (lifecycleTag === undefined) {
+          console.warn(`Ignoring RDS Cluster Snapshot ${evt.SourceId}: no Draco_Lifecycle tag`);
           break;
         }
+        if (lifecycleTag.Value.toLowerCase() == 'ignore') break;
+
         console.log(`Copying RDS Cluster Snapshot ${evt.SourceId} to ${target_id}`);
         let p0 = {
           SourceDBClusterSnapshotIdentifier: evt.SourceId,
@@ -140,10 +146,13 @@ exports.handler = async (incoming) => {
         evt.SnapshotType = 'EBS';
         let source_id = evt.detail.snapshot_id.split(':snapshot/')[1];
         let taglist = await common.getEC2SnapshotTags(ec2, source_id);
-        if (taglist.filter(tag => tag.Key == 'Draco_Lifecycle').length == 0) {
-          console.log(`Ignoring ${evt.SnapshotType} Snapshot ${source_id}: no Draco_Lifecycle tag`);
+        let lifecycleTag = rsp.TagList.find(tag => tag.Key == 'Draco_Lifecycle')
+        if (lifecycleTag === undefined) {
+          console.warn(`Ignoring ${evt.SnapshotType} Snapshot ${source_id}: no Draco_Lifecycle tag`);
           break;
         }
+        if (lifecycleTag.Value.toLowerCase() == 'ignore') break;
+
         let region = evt.detail.snapshot_id.split(':')[4];
         var p0 = {
           Description: `Draco transient snapshot of ${evt.detail.source} at ${evt.detail.endTime}`,

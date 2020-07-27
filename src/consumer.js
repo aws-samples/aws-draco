@@ -243,7 +243,7 @@ async function lifeCycle(snapshot_type) {
         tags[tag.Key] = tag.Value;
       }
       if (typeof tags.Draco_Lifecycle === 'undefined') {
-        console.log(`Source: ${source} has no Draco_Lifecycle tag. Skipped`);
+        console.warn(`Source: ${source} has no Draco_Lifecycle tag. Skipped`);
         continue;
       }
       const lifecycle = tags["Draco_Lifecycle"];

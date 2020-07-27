@@ -265,6 +265,38 @@ Resources:
         S3Key: draco/producer.zip
         S3ObjectVersion: !Ref ProducerLambdaVersion
 
+  DracoLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Join:
+          - '/'
+          - - /aws/lambda
+            - !Ref SnapshotHandlerLambda
+      RetentionInDays: 90
+
+  CloudWatchErrorMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: "ERROR"
+      LogGroupName: !Ref DracoLogGroup
+      MetricTransformations:
+        - MetricValue: "1"
+          DefaultValue: 0
+          MetricNamespace: "Draco/SnapshotHandler"
+          MetricName: "ErrorCount"
+
+  CloudWatchWarnMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: "WARN"
+      LogGroupName: !Ref DracoLogGroup
+      MetricTransformations:
+        - MetricValue: "1"
+          DefaultValue: 0
+          MetricNamespace: "Draco/SnapshotHandler"
+          MetricName: "WarnCount"
+
   Wait4Copy:
     Type: AWS::CloudFormation::Stack
     Properties:
