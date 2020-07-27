@@ -42,19 +42,30 @@ take on one of several predetermined values:
 * `Test`: This retains the most recent 3 copies, irrespective of time.
 * `Weekly`: this retains a rolling 7 days,
 * `Fortnightly`: this retains a rolling 14 days,
-* `Biweekly`: this retains two, one for each of the past two weeks,
+* `Biweekly`: this retains two: a weekly for the previous week and the most recent daily
+   for the current week,
+* `SemiMonthly`: this retains 16: the last two weeks of daily snapshots and two weekly
+   snapshots (for weeks 3 and 4),
 * `Monthly`: this retains a rolling month of daily snapshots,
 * `CurrentMonth`: this retains only those snapshots in the current month,
-* `Standard`: This retains the moste recent daily for a week, the most recent weeklies for
+* `Standard`: This retains the most recent daily for a week, the most recent weeklies for
   a month, the most recent monthlies for a year, and the most recent yearly for 7 years.
 
 After a snapshot is copied to DR, all of the snapshots of that type in the DR account are
 reviewed and the **current** policy for the source database or volume is applied. This
 allows the retention policy to be altered and automatically propagate to the DR account.
 
+To see examples of the policies follow the instructions in [Testing](test/README.md)
+
 ## Costs
 
 Minimal. See the approximate [cost calculation](COST.md)
+
+## Limits
+
+Your DR account must have the snapshot limit set so that all the desired snapshots can be
+retained. The default limit is 50. If this limit is exceeded DRACO cannot function and
+will log an ERROR message to CloudWatch logs.
 
 # Installation
 
