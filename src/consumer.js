@@ -15,7 +15,7 @@ const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
 const common = require('./common.js');
 
-exports.handler = async (incoming) => {
+exports.handler = async (incoming, context) => {
   var output = 'nothing';
   var status = 200;
 
@@ -97,7 +97,7 @@ exports.handler = async (incoming) => {
           };
           let sfparams = {
             stateMachineArn: state_machine_arn,
-            name: "wait4snapshot_copy_" + target_id,
+            name: context.awsRequestId,
             input: JSON.stringify(sfinput),
           };
           output = await sf.startExecution(sfparams).promise();

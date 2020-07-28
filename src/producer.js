@@ -12,7 +12,7 @@ const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
 const common = require('./common.js');
 
-exports.handler = async (incoming) => {
+exports.handler = async (incoming, context) => {
   var output;
   var message;
   var status = 200;
@@ -87,7 +87,7 @@ exports.handler = async (incoming) => {
         };
         let p1 = {
           stateMachineArn: sm_copy_arn,
-          name: "wait4snapshot_copy_" + target_id,
+          name: context.awsRequestId,
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
@@ -134,7 +134,7 @@ exports.handler = async (incoming) => {
         };
         let p1 = {
           stateMachineArn: sm_copy_arn,
-          name: "wait4snapshot_copy_" + target_id,
+          name: context.awsRequestId,
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
@@ -183,7 +183,7 @@ exports.handler = async (incoming) => {
         };
         let p1 = {
           stateMachineArn: sm_copy_arn,
-          name: "wait4snapshot_copy_" + source_id,
+          name: context.awsRequestId,
           input: JSON.stringify(sfinput),
         };
         output = await sf.startExecution(p1).promise();
