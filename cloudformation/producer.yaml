@@ -268,11 +268,7 @@ Resources:
   DracoLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName:
-        Fn::Join:
-          - '/'
-          - - /aws/lambda
-            - !Ref SnapshotHandlerLambda
+      LogGroupName: !Sub "/aws/lambda/${SnapshotHandlerLambda}"
       RetentionInDays: 90
 
   CloudWatchErrorMetric:
