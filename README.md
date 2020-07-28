@@ -90,7 +90,7 @@ bundle install
 
 ### Cloudformation Linting
 
-Before uploading the CloudFomration templates the Rakefile will call the 'cfn_lint' task,
+Before uploading the CloudFormation templates the Rakefile will call the 'cfn_lint' task,
 for this to succeed, install the [AWS CloudFormation
 Linter](https://github.com/aws-cloudformation/cfn-python-lint).
 
@@ -106,25 +106,10 @@ name.
 ## Updating the Lambda function code (optional)
 
 If you want to be able to modify the lambda functions, perhaps to add a new lifecycle,
-then you will need to create an S3 bucket to hold your copies of the code. If you just
-want to use the existing code unchanged then leave the default bucket ('draco') in
+then you can use the Draco S3 bucket created during the install. The name of this bucket is provided as an output parameter from the stack and is of the form `draco-<account number>-<region>`.
+Use this as the name of the default bucket in `config.yaml`. If
+want to use the existing released Draco code then leave the default bucket ('draco') in
 `config.yaml`.
-
-To create an S3 bucket update `config.yaml` with your chosen bucket name and execute:
-
-```bash
-bundle exec rake setup_bucket
-```
-
-This creates a bucket with object versioning enabled to allow the CloudFormation stacks to
-be updated. Since the code is already versioned in your repository, a lifecycle policy is set to
-automatically expire the code objects stored under the `draco` prefix.
-
-Since both the source (Producer) account and the target (Disaster Recovery) account
-require access, the bucket ACL is set to allow read for authenticated users. Note that
-this is the simplest way of granting this access. If you are concerned about this
-quasi-public visibility then you should implement more sophisticated Bucket and IAM
-Policies.
 
 Once you've made any code changes, then upload the code to the bucket with:
 
@@ -147,8 +132,12 @@ command line as follows:
 * Sign in to the CloudFormation console __in the disaster recovery account__ and create a
   stack using the `consumer.yaml` template.
 
-In both cases note that you will have to change the default input parameters if you have
-made any changes.
+In both cases that you will have to change the default input parameters if you have made
+any changes.
+
+Note that due to limitations within CloudFormation there is a parameter "DeployTimestamp"
+that must be updated if you wish new code to be automatically deployed. The value is not
+used, it must just be different to the previous deployment.
 
 ### From the Command Line
 

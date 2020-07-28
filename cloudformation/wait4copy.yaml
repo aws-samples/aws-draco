@@ -11,9 +11,13 @@ Parameters:
     Description: The S3 bucket containing the code
     Default: draco
     Type: String
-  Wait4CopyLambdaVersion:
-    Description: The S3 Bucket version of the Wait4Copy Lambda code to use
-    Default: draco
+  CodeKey:
+    Description: The path to the Wait4Copy Lambda zipfile
+    Default: draco/wait4copy.zip
+    Type: String
+  CodeVersion:
+    Description: The S3 object version of the Wait4Copy Lambda zipfile
+    Default: none
     Type: String
   NotifyTopicArn:
     Description: The arn of the topic to notify
@@ -29,6 +33,7 @@ Parameters:
     Type: Number
 
 Resources:
+
   Wait4CopyExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -71,8 +76,8 @@ Resources:
       Role: !GetAtt Wait4CopyExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: draco/wait4copy.zip
-        S3ObjectVersion: !Ref Wait4CopyLambdaVersion
+        S3Key: !Ref CodeKey
+        S3ObjectVersion: !Ref CodeVersion
 
   Wait4CopySMRole:
     Type: AWS::IAM::Role

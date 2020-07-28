@@ -59,7 +59,8 @@ begin
 	    msg << "Need #{var} to be set in environment or config.yaml!"
 	end
     end
-    puts("")
+    TIMESTAMP = Time.now.strftime("%Y-%m-%dT%H:%M:%S")
+    puts("Deployment started at: #{TIMESTAMP}")
     unless msg.empty?
 	STDERR.puts msg.join("\n") 
 	exit 2
@@ -70,16 +71,6 @@ rescue Errno::ENOENT
 rescue Exception => e
     STDERR.puts("Initialization failed: #{e.message}")
     exit 1
-end
-
-def get_lambda_versions
-    s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
-    versions = %w(producer consumer wait4copy).map do |src|
-	rsp = s3.list_object_versions(bucket: ENV['SOURCE_BUCKET'], prefix: "draco/#{src}.zip")
-	latest = rsp[:versions].select{|v| v[:is_latest]}.first
-	[src, latest.version_id]
-    end
-    return versions.to_h
 end
 
 desc "Setup Bucket #{ENV['SOURCE_BUCKET']}. Allow both accounts access, setup object versioning and lifecycle"
@@ -132,6 +123,8 @@ task :es_lint do
     sh "eslint src"
 end
 
+# If bucket in another region use "AWS_REGION=other bundle exec rake upload"
+#
 desc "Upload Lambda packages to S3"
 task :upload => [:es_lint, :cfn_lint, :test] do
     begin
@@ -168,24 +161,18 @@ task :upload => [:es_lint, :cfn_lint, :test] do
     end
 end
 
-desc "Get current code S3 Object versions"
-task :get_versions do
-    get_lambda_versions.each {|k,v| puts "#{k}: version: #{v}"}
-end
-
 namespace :create do
     desc "Create Producer Stack (run in Production account)"
     task :producer do
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
-	code_versions = get_lambda_versions
 	cfn.create_stack(
 	    stack_name: "draco-producer",
 	    template_body: File.read('cloudformation/producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
-		{ parameter_key: "ProducerLambdaVersion", parameter_value: code_versions['producer'] },
-		{ parameter_key: "Wait4CopyLambdaVersion", parameter_value: code_versions['wait4copy'] },
+		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
+		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
 		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
 		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
@@ -196,15 +183,14 @@ namespace :create do
     desc "Create Consumer Stack (run in DR account)"
     task :consumer do
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
-	code_versions = get_lambda_versions
 	cfn.create_stack(
 	    stack_name: "draco-consumer",
 	    template_body: File.read('cloudformation/consumer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
-		{ parameter_key: "ConsumerLambdaVersion", parameter_value: code_versions['consumer'] },
-		{ parameter_key: "Wait4CopyLambdaVersion", parameter_value: code_versions['wait4copy'] },
+		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
+		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
 		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
 		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
@@ -218,15 +204,14 @@ namespace :update do
     desc "Update Producer Stack (run in Production account)"
     task :producer do
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
-	code_versions = get_lambda_versions
 	rsp = cfn.update_stack(
 	    stack_name: "draco-producer",
 	    template_body: File.read('cloudformation/producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
-		{ parameter_key: "ProducerLambdaVersion", parameter_value: code_versions['producer'] },
-		{ parameter_key: "Wait4CopyLambdaVersion", parameter_value: code_versions['wait4copy'] },
+		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
+		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
 		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
 		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
@@ -238,15 +223,14 @@ namespace :update do
     desc "Update Consumer Stack (run in DR account)"
     task :consumer do
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
-	code_versions = get_lambda_versions
 	rsp = cfn.update_stack(
 	    stack_name: "draco-consumer",
 	    template_body: File.read('cloudformation/consumer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
-		{ parameter_key: "ConsumerLambdaVersion", parameter_value: code_versions['consumer'] },
-		{ parameter_key: "Wait4CopyLambdaVersion", parameter_value: code_versions['wait4copy'] },
+		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
+		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
 		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
 		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
