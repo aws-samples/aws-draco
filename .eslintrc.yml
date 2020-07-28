@@ -8,4 +8,6 @@ extends:
   - eslint:recommended
 parserOptions:
   ecmaVersion: 2019
-rules: {}
+rules: {
+  require-await: 2
+}

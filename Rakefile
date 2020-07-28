@@ -127,8 +127,13 @@ task :cfn_lint do
     end
 end
 
+desc "Lint the Javascript Code"
+task :es_lint do
+    sh "eslint src"
+end
+
 desc "Upload Lambda packages to S3"
-task :upload => [:cfn_lint, :test] do
+task :upload => [:es_lint, :cfn_lint, :test] do
     begin
     s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
     manifests = {

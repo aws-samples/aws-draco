@@ -249,7 +249,7 @@ async function lifeCycle(snapshot_type) {
       const lifecycle = tags["Draco_Lifecycle"];
       console.log(`Source: ${source} has lifecycle '${lifecycle}' with ${snapshots.length} snapshots. Youngest: ${JSON.stringify(youngest)}`);
       let dry_run = (process.env.NO_DRY_RUN ? "": "(Dry Run) ");
-      let deletions = (await retention.implementPolicy(snapshots, lifecycle)).filter(f => f.retain == false);
+      let deletions = retention.implementPolicy(snapshots, lifecycle).filter(f => f.retain == false);
       for (const snap of deletions) {
         console.log(`${dry_run}Deleting: ${snap.id}`);
         if (dry_run.length == 0) {
