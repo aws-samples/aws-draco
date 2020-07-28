@@ -361,7 +361,8 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref DracoRegionalBucket
-        S3Key: !Sub "${CodePrefix}consumer.zip${CopyObjects.suffix}"
+        S3Key: !Sub "${CodePrefix}consumer.zip"
+        S3ObjectVersion: !GetAtt CopyObjects.consumer.zip
 
   DracoLogGroup:
     Type: AWS::Logs::LogGroup
@@ -397,7 +398,8 @@ Resources:
       TemplateURL: !Sub "https://s3.amazonaws.com/${CodeBucket}/draco/wait4copy.yaml"
       Parameters:
         CodeBucket: !Ref DracoRegionalBucket
-        CodeKey: !Sub "${CodePrefix}wait4copy.zip${CopyObjects.suffix}"
+        CodeKey: !Sub "${CodePrefix}wait4copy.zip"
+        CodeVersion: !GetAtt CopyObjects.wait4copy.zip
         NotifyTopicArn: !Ref SnapshotTopic
 
 Outputs:
