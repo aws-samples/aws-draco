@@ -1,0 +1,22 @@
+{
+    "Records": [
+        {
+            "EventSource": "aws:sns",
+            "EventVersion": "1.0",
+            "EventSubscriptionArn": "arn:aws:sns:eu-west-1:341369230415:DracoProducer:44d56e0c-706c-43ab-b34c-425b8d4a96e8",
+            "Sns": {
+                "Type": "Notification",
+                "MessageId": "3813f988-844a-5614-b807-ae1126f7ed5e",
+                "TopicArn": "arn:aws:sns:eu-west-1:341369230415:DracoProducer",
+                "Subject": "RDS Notification Message",
+                "Message": "{\"Event Source\":\"db-cluster-snapshot\",\"Event Time\":\"2020-07-28 03:50:20.392\",\"Identifier Link\":\"https://console.aws.amazon.com/rds/home?region=eu-west-1#snapshot:engine=aurora;id=rds:tpc-data-cluster-tpcdatabasecluster-1cyxlg7w55kzf-2020-07-28-03-50\",\"Source ID\":\"rds:tpc-data-cluster-tpcdatabasecluster-1cyxlg7w55kzf-2020-07-28-03-50\",\"Event ID\":\"http://docs.amazonwebservices.com/AmazonRDS/latest/UserGuide/USER_Events.html#RDS-EVENT-0169\",\"Event Message\":\"Automated cluster snapshot created\"}",
+                "Timestamp": "2020-07-28T03:50:21.223Z",
+                "SignatureVersion": "1",
+                "Signature": "mWQ2wvVO+bBfEpwemyYJhYLEl7SGwkd1PUIJOllp7K0gCohKF1DgjUkDjB1FqF54BjF+KbmgtCXq2yuq3Ex9fS7NgwoCW1tt/DwG7hksh7Hs5kqVW++zPGBtYIKMfCMVLTJWDEZUPioEvVw7s3WZNKb8DdavhsmEGEb9Epcfgk340/dLLdsIm8X4uR3KxYMjtA+9YdLg5f12716Glrro0v2ON6pZIfGjBnoGeg4ez2Um6YN2JkdmICZMGXMInbxlJ+JwA/dRjnRdIgRycHR3feT64pltGgFmHCmpvUXDAf2M2zpyEgLaPPPlaDx4Tj6NNEx5Lhtm50CaClMeLGFsfA==",
+                "SigningCertUrl": "https://sns.eu-west-1.amazonaws.com/SimpleNotificationService-a86cb10b4e1f29c941702d737128f7b6.pem",
+                "UnsubscribeUrl": "https://sns.eu-west-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:eu-west-1:341369230415:DracoProducer:44d56e0c-706c-43ab-b34c-425b8d4a96e8",
+                "MessageAttributes": {}
+            }
+        }
+    ]
+}
