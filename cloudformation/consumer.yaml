@@ -355,6 +355,7 @@ Resources:
           STATE_MACHINE_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
           TAG_KEY: !Ref DrTagKey
           TAG_VALUE: !Ref DrTagValue
+          DRY_RUN: true
       Handler: consumer.handler
       Runtime: nodejs12.x
       Timeout: 60

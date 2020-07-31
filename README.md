@@ -176,10 +176,10 @@ policy and potentially deleted.
 
 ### Deletion and Dry Run
 
-As a safety measure, the code __will not actually delete any snapshots__ until
-the environment variable `NO_DRY_RUN` is set in the Lambda function. This should be done
-manually via the console, after checking the CloudWatch logs to make sure that no vital
-snapshots would be removed!
+As a safety measure, the code __will not actually delete any snapshots__ until the
+environment variable `DRY_RUN` is either removed or set to 'false' in the Lambda function.
+This should be done manually via the console, after checking the CloudWatch logs to make
+sure that no vital snapshots would be removed!
 
 ### Monitoring
 

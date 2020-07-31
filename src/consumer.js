@@ -224,50 +224,49 @@ async function lifeCycle(snapshot_type) {
 
 
   for (const source in sources) {
-      const snapshots = sources[source].sort((a,b) => a.age - b.age); // youngest first
-      // Get the Tags on the most recent Snapshot
-      let youngest = snapshots[0];
-      let taglist;
-      switch (snapshot_type) {
-        case 'RDS Cluster':
-        case 'RDS':
-          rsp = await rds.listTagsForResource({"ResourceName": youngest.arn}).promise();
-          taglist = rsp.TagList;
-          break;
-        case 'EBS':
-          taglist = await common.getEC2SnapshotTags(ec2, youngest.id);
-          break;
-      }
-      let tags = {};
-      for (let tag of taglist) {
-        tags[tag.Key] = tag.Value;
-      }
-      if (typeof tags.Draco_Lifecycle === 'undefined') {
-        console.warn(`Source: ${source} has no Draco_Lifecycle tag. Skipped`);
-        continue;
-      }
-      const lifecycle = tags["Draco_Lifecycle"];
-      console.log(`Source: ${source} has lifecycle '${lifecycle}' with ${snapshots.length} snapshots. Youngest: ${JSON.stringify(youngest)}`);
-      let dry_run = (process.env.NO_DRY_RUN ? "": "(Dry Run) ");
-      let deletions = retention.implementPolicy(snapshots, lifecycle).filter(f => f.retain == false);
-      for (const snap of deletions) {
-        console.log(`${dry_run}Deleting: ${snap.id}`);
-        if (dry_run.length == 0) {
-            switch(snapshot_type) {
-              case 'RDS Cluster':
-                rsp = await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: snap.id }).promise();
-                break;
-              case 'RDS':
-                rsp =await rds.deleteDBSnapshot({ DBSnapshotIdentifier: snap.id }).promise();
-                break;
-              case 'EBS':
-                rsp =await ec2.deleteSnapshot({ SnapshotId: snap.id }).promise();
-                break;
-            }
-        }
+    const snapshots = sources[source].sort((a,b) => a.age - b.age); // youngest first
+    // Get the Tags on the most recent Snapshot
+    let youngest = snapshots[0];
+    let taglist;
+    switch (snapshot_type) {
+      case 'RDS Cluster':
+      case 'RDS':
+        rsp = await rds.listTagsForResource({"ResourceName": youngest.arn}).promise();
+        taglist = rsp.TagList;
+        break;
+      case 'EBS':
+        taglist = await common.getEC2SnapshotTags(ec2, youngest.id);
+        break;
+    }
+    let tags = {};
+    for (let tag of taglist) {
+      tags[tag.Key] = tag.Value;
+    }
+    if (typeof tags.Draco_Lifecycle === 'undefined') {
+      console.warn(`Source: ${source} has no Draco_Lifecycle tag. Skipped`);
+      continue;
+    }
+    const lifecycle = tags["Draco_Lifecycle"];
+    console.log(`Source: ${source} has lifecycle '${lifecycle}' with ${snapshots.length} snapshots. Youngest: ${JSON.stringify(youngest)}`);
+    let dry_run = (typeof process.env.DRY_RUN !== 'undefined' && process.env.DRY_RUN != "false")
+    let deletions = retention.implementPolicy(snapshots, lifecycle).filter(f => f.retain == false);
+    for (const snap of deletions) {
+      console.log(`${dry_run ? "Dry Run - Not ":""}Deleting: ${snap.id}`);
+      if (!dry_run) {
+          switch(snapshot_type) {
+            case 'RDS Cluster':
+              rsp = await rds.deleteDBClusterSnapshot({ DBClusterSnapshotIdentifier: snap.id }).promise();
+              break;
+            case 'RDS':
+              rsp =await rds.deleteDBSnapshot({ DBSnapshotIdentifier: snap.id }).promise();
+              break;
+            case 'EBS':
+              rsp =await ec2.deleteSnapshot({ SnapshotId: snap.id }).promise();
+              break;
+          }
       }
     }
-  console.log("That's all folks");
+  }
 }
 
 // vim: sts=2 et sw=2:
