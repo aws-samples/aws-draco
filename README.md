@@ -2,9 +2,10 @@
 
 The DR Account Copying system (DRACO) is a skeleton application built to address a common
 need - that of moving copies of EBS and RDS snapshots (including RDS Aurora Clusters) to a
-separate DR account. Although this problem has been partially addressed before (see [this
-AWSLabs Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to
-implementing an extensible, event-driven and fully serverless solution:
+separate DR account (within the same Region). Although this problem has been partially
+addressed before (see [this AWSLabs
+Project](https://github.com/awslabs/rds-snapshot-tool)) there are benefits to implementing
+an extensible, event-driven and fully serverless solution:
 
 * You can add other types of snapshots to be backed up by listening for the appropriate events.
 * You can easily parallelize these long running tasks in a way that is difficult with
@@ -103,21 +104,73 @@ After cloning the repository create your own configuration file by copying
 variables in this file will be overridden if an environment variable exists with the same
 name.
 
+### S3 Bucket Usage
+
+The code for the producer and consumer must be sourced from an S3 bucket in order to be
+used by the CloudFormation template. The current master code is kept in an S3 bucket in
+the AWS London Region named `draco`. CloudFormation requires that the code be in an S3
+bucket in the hosting region, which is an issue when installing Draco in regions other
+than London. In addition, customizing the code (eg. to add a new Retention policy), needs
+a separate (writable!) S3 bucket.
+
+To solve these two problems the _consumer_ CloudFormation template creates a new
+Draco-specific bucket (owned by the DR account) in the target region and copies the code
+into it using a Custom resource. The name of this bucket is `draco-<account
+number>-<region>`.  The source bucket and prefix are given as parameters to the templates,
+with the defaults being the master code bucket. These can be overridden to deploy
+customized code.
+
+For security reasons only the DR account has write access to the Draco-specific bucket,
+upon which a bucket policy gives the Production account readonly access to the Draco
+artifacts. Since these are different accounts, the role or user executing the creation of
+the Producer stack **must have permissions granted on the Draco-specific bucket in the DR
+account**. Here is an example of an appropriate policy that must be manually attached:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ListBucket",
+            "Effect": "Allow",
+            "Action": "s3:ListBucket",
+            "Resource": "arn:aws:s3:::draco-<account number>-<region>"
+        },
+        {
+            "Sid": "GetDRACOObjects",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::draco-<account number>-<region>/draco/*"
+        }
+    ]
+}
+```
+
+The Draco-specific bucket has versioning enabled, which simplifies the CloudFormation
+update of the Lambda function code and also allows a record to be kept of code changes.
+
 ## Updating the Lambda function code (optional)
 
-If you want to be able to modify the lambda functions, perhaps to add a new lifecycle,
-then you can use the Draco S3 bucket created during the install. The name of this bucket is provided as an output parameter from the stack and is of the form `draco-<account number>-<region>`.
-Use this as the name of the default bucket in `config.yaml`. If
-want to use the existing released Draco code then leave the default bucket ('draco') in
-`config.yaml`.
+If you want to be able to modify the Lambda functions then you can use the Draco S3 bucket
+created during the install (which is owned by the DR account). The name of this bucket is
+provided as an output parameter from the stack and is of the form `draco-<account
+number>-<region>`. You may also use any other bucket with appropriate permissions.
 
-Once you've made any code changes, then upload the code to the bucket with:
+If using the command line interface, update the name of the bucket in `config.yaml` (which
+by default is the master bucket 'draco').  Then upload code changes with the command:
+
 
 ```bash
 bundle exec rake upload
 ```
 
 ## Create the CloudFormation Stacks
+
+Note the DR account stack must be created first, as it creates the S3 bucket that
+holds the code.
 
 The names of the Producer and Consumer SNS topics are hardcoded within the account and
 region as 'DracoProducer' and 'DracoConsumer'. This is to avoid a circular dependency
@@ -126,11 +179,11 @@ command line as follows:
 
 ### From the Console
 
-* Sign in to the CloudFormation console __in the source account__ and create a stack using the
-  `producer.yaml` template.
-
 * Sign in to the CloudFormation console __in the disaster recovery account__ and create a
   stack using the `consumer.yaml` template.
+
+* Sign in to the CloudFormation console __in the source account__ and create a stack using the
+  `producer.yaml` template.
 
 In both cases that you will have to change the default input parameters if you have made
 any changes.
@@ -145,10 +198,10 @@ Make sure that `config.yaml` is correctly configured. Note that you can change
 `AWS_PROFILE` either by exporting it directly using the shell (`export AWS_PROFILE=zzzz`)
 or by updating `config.yaml`. Then:
 
-* Ensure that `AWS_PROFILE` is set to the producer account
-* Issue the command: `bundle exec rake create:producer`
 * Switch `AWS_PROFILE` to the DR Account
 * Issue the command: `bundle exec rake create:consumer`
+* Ensure that `AWS_PROFILE` is set to the producer account
+* Issue the command: `bundle exec rake create:producer`
 
 Note that if you are developing new Lambda functions that you can upload code changes as
 described above, and then update the stacks with `bundle exec rake update:<stackname>`.

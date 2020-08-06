@@ -164,16 +164,14 @@ end
 namespace :create do
     desc "Create Producer Stack (run in Production account)"
     task :producer do
+	sh "cfn-lint cloudformation/producer.yaml"
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	cfn.create_stack(
 	    stack_name: "draco-producer",
 	    template_body: File.read('cloudformation/producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
-		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
-		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
 		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
-		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
 		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
 		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
@@ -182,6 +180,7 @@ namespace :create do
     end
     desc "Create Consumer Stack (run in DR account)"
     task :consumer do
+	sh "cfn-lint cloudformation/consumer.yaml"
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	cfn.create_stack(
 	    stack_name: "draco-consumer",
@@ -203,16 +202,14 @@ end
 namespace :update do
     desc "Update Producer Stack (run in Production account)"
     task :producer do
+	sh "cfn-lint cloudformation/producer.yaml"
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	rsp = cfn.update_stack(
 	    stack_name: "draco-producer",
 	    template_body: File.read('cloudformation/producer.yaml'),
 	    capabilities: ['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
 	    parameters: [
-		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
-		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
 		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
-		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
 		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
 		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
@@ -222,6 +219,7 @@ namespace :update do
     end
     desc "Update Consumer Stack (run in DR account)"
     task :consumer do
+	sh "cfn-lint cloudformation/consumer.yaml"
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	rsp = cfn.update_stack(
 	    stack_name: "draco-consumer",

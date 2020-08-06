@@ -10,23 +10,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: "A CloudFormation Template for Copying DB Snapshots to another (DR) account"
 
 Parameters:
-  CodeBucket:
-    Description: The S3 bucket containing the code
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$
-    Default: draco
-    Type: String
-  CodePrefix:
-    Description: The S3 prefix within the bucket (may or may not have a trailing slash!)
-    AllowedPattern: ^[0-9a-zA-Z-/]*$
-    Default: draco/
-    Type: String
   DeploymentTimestamp:
     Description: The time of deploy used to trigger the fetch of the latest code
     Default: 2000-01-01T00:00:00
-    Type: String
-  SourceAcct:
-    Description: The account that shares the snapshot copies to be DRd
-    Default: 111111111111
     Type: String
   TargetAcct:
     Default: 222222222222
@@ -43,29 +29,21 @@ Parameters:
 
 Resources:
 
-  DracoRegionalBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "draco-${AWS::AccountId}-${AWS::Region}"
-      VersioningConfiguration:
-        Status: Enabled
-
-  CopyObjects:
-    Type: Custom::CopyObjects
+  GetObjectVersions:
+    Type: Custom::GetObjectVersions
     Properties:
       DeploymentTimestamp: !Ref DeploymentTimestamp
-      ServiceToken: !GetAtt CopyObjectsFunction.Arn
-      DestBucket: !Ref DracoRegionalBucket
-      SourceBucket: !Ref CodeBucket
+      ServiceToken: !GetAtt GetObjectVersionsFunction.Arn
+      SourceBucket: !Sub "draco-${TargetAcct}-${AWS::Region}"
       PhysicalResourceId: DracoFiles
-      Prefix: !Ref CodePrefix
+      Prefix: draco/
       Objects:
         - producer.zip
         - producer.yaml
         - wait4copy.zip
         - wait4copy.yaml
     
-  CopyObjectsRole:
+  GetObjectVersionsRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -79,7 +57,7 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Path: /
       Policies:
-        - PolicyName: lambda-copier
+        - PolicyName: lambda-getobjectversions
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -87,31 +65,20 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::${CodeBucket}/${CodePrefix}*'
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                Resource:
-                  - !Sub 'arn:aws:s3:::${DracoRegionalBucket}/${CodePrefix}*'
+                  - !Sub 'arn:aws:s3:::draco-${TargetAcct}-${AWS::Region}/draco/*'
               - Effect: Allow
                 Action:
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::${DracoRegionalBucket}'
+                  - !Sub 'arn:aws:s3:::draco-${TargetAcct}-${AWS::Region}'
 
-  # Copies objects from a source S3 bucket to a destination if they don't already exist.
-  # It returns the S3 object versions. The main use for this is as the S3ObjectVersion
-  # parameter in Lambda functions defined elsewhere in the template, allowing the code to
-  # be updated, or not depending whether a new version has been uploaded.
-  CopyObjectsFunction:
+  GetObjectVersionsFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Description: Copies objects from a source S3 bucket to a destination
+      Description: Retrieves latest object versions from an S3 bucket
       Handler: index.handler
       Runtime: python3.7
-      Role: !GetAtt CopyObjectsRole.Arn
+      Role: !GetAtt GetObjectVersionsRole.Arn
       Timeout: 240
       Code:
         ZipFile: |
@@ -124,34 +91,15 @@ Resources:
 
             logging.getLogger().setLevel(logging.INFO)
 
-            def copy_objects(source_bucket, dest_bucket, prefix, objects):
+            def get_object_versions(src_bucket, prefix, objects):
                 s3 = boto3.client('s3')
                 versions = {}
-                etags = {}
                 for o in objects:
                     try:
-                        rsp = s3.head_object(Bucket=dest_bucket, Key=prefix+o)
+                        rsp = s3.head_object(Bucket=src_bucket, Key=prefix+o)
                         versions[o] = rsp['VersionId']
-                        etags[o] = rsp['ETag']
                     except botocore.exceptions.ClientError as error:
-                        if source_bucket == dest_bucket:
-                            raise error
                         versions[o] = None
-                        etags[o] = '-'
-
-                    logging.debug(f'{dest_bucket}/{prefix+o}: version={versions[o]}, etag={etags[o]}')
-
-                    if source_bucket != dest_bucket:
-                        try:
-                            crsp = s3.copy_object(CopySource=f'{source_bucket}/{prefix+o}',
-                                                  Bucket=dest_bucket, Key=prefix+o,
-                                                  CopySourceIfNoneMatch=etags[o])
-                            versions[o] = crsp['VersionId']
-                            logging.debug(f'{dest_bucket}/{prefix+o}: copied version={versions[o]}')
-                        except botocore.exceptions.ClientError as error:
-                            logging.debug(f'{dest_bucket}/{prefix+o}: up-to-date')
-                            if error.response['Error']['Code'] != 'PreconditionFailed':
-                                raise error
 
                 return versions
 
@@ -162,21 +110,19 @@ Resources:
 
 
             def handler(event, context):
-                # make sure we send a failure to CloudFormation if the function
-                # is going to timeout
+                # make sure we send a failure to CloudFormation if the function is going to timeout
                 timer = threading.Timer((context.get_remaining_time_in_millis()
                                          / 1000.00) - 0.5, timeout, args=[event, context])
                 timer.start()
                 status = cfnresponse.SUCCESS
                 responseData = {}
                 try:
-                    source_bucket = event['ResourceProperties']['SourceBucket']
-                    dest_bucket = event['ResourceProperties']['DestBucket']
+                    src_bucket = event['ResourceProperties']['SourceBucket']
                     physical_resource_id = event['ResourceProperties']['PhysicalResourceId']
                     prefix = event['ResourceProperties']['Prefix']
                     objects = event['ResourceProperties']['Objects']
-                    if event['RequestType'] != 'Delete': # Leave the objects in the bucket
-                        versions = copy_objects(source_bucket, dest_bucket, prefix, objects)
+                    if event['RequestType'] != 'Delete':
+                        versions = get_object_versions(src_bucket, prefix, objects)
                         responseData = versions
                         logging.info(f'Versions: {versions}')
                 except Exception as e:
@@ -320,7 +266,7 @@ Resources:
           Resource: !Ref SnapshotTopic
           Condition:
             StringEquals:
-              AWS:SourceOwner: !Ref SourceAcct
+              AWS:SourceOwner: !Sub ${AWS::AccountId}
         - Sid: AllowTargetPublish
           Effect: Allow
           Principal:
@@ -407,9 +353,9 @@ Resources:
       Timeout: 60
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref DracoRegionalBucket
-        S3Key: !Sub "${CodePrefix}producer.zip"
-        S3ObjectVersion: !GetAtt CopyObjects.producer.zip
+        S3Bucket: !Sub "draco-${TargetAcct}-${AWS::Region}"
+        S3Key: "draco/producer.zip"
+        S3ObjectVersion: !GetAtt GetObjectVersions.producer.zip
 
   DracoLogGroup:
     Type: AWS::Logs::LogGroup
@@ -442,17 +388,14 @@ Resources:
   Wait4Copy:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://${DracoRegionalBucket.RegionalDomainName}/${CodePrefix}wait4copy.yaml"
+      TemplateURL: !Sub "https://draco-${TargetAcct}-${AWS::Region}.s3-${AWS::Region}.${AWS::URLSuffix}/draco/wait4copy.yaml"
       Parameters:
-        CodeBucket: !Ref DracoRegionalBucket
-        CodeKey: !Sub "${CodePrefix}wait4copy.zip"
-        CodeVersion: !GetAtt CopyObjects.wait4copy.zip
+        CodeBucket: !Sub draco-${TargetAcct}-${AWS::Region}
+        CodeKey: draco/wait4copy.zip
+        CodeVersion: !GetAtt GetObjectVersions.wait4copy.zip
         NotifyTopicArn: !Ref SnapshotTopic
 
 Outputs:
-
-  DracoRegionalBucket:
-    Value: !Ref DracoRegionalBucket
 
   ProducerTopicArn:
     Value: !Ref SnapshotTopic

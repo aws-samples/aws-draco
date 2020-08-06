@@ -47,6 +47,22 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
 
+  DracoBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DracoRegionalBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref SourceAcct
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource:
+              - !Sub 'arn:aws:s3:::${DracoRegionalBucket}/${CodePrefix}*'
+
   CopyObjects:
     Type: Custom::CopyObjects
     Properties:
@@ -61,6 +77,8 @@ Resources:
         - consumer.yaml
         - wait4copy.zip
         - wait4copy.yaml
+        - producer.zip
+        - producer.yaml
     
   CopyObjectsRole:
     Type: AWS::IAM::Role
