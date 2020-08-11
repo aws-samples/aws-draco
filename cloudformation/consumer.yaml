@@ -203,6 +203,8 @@ Resources:
     
   SnapshotEncryptionKey:
     Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Description: Key used for encrypting DR copies
       Enabled: true
@@ -233,7 +235,6 @@ Resources:
             - kms:DescribeKey
           Resource: '*'
           
-
   # Permissions on kms should be tightened
   #
   LambdaExecutionRole:

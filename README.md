@@ -36,9 +36,10 @@ Author: Nick Townsend (nicktown@amazon.com)
 Once installed DRACO will copy every EBS and RDS snapshot taken in the designated
 'Production' account that is tagged with `Draco_Lifecycle` across to the designated
 'Disaster Recovery' account and re-encrypt them with a key known only to the DR account.
-There they will accumulate continuously, subject to a retention policy. The retention
-policy for a snapshot is determined by the value of the tag `Draco_Lifecycle` which must
-take on one of several predetermined values:
+(Note that copying unencrypted RDS cluster snapshots with encryption is not supported, so
+these will be copied across and stored as-is.) There they will accumulate continuously,
+subject to a retention policy. The retention policy for a snapshot is determined by the
+value of the tag `Draco_Lifecycle` which must take on one of several predetermined values:
 
 * `Ignore`: No action will be taken. Useful to suppress the warning messages that would
    otherwise be produced.
@@ -59,6 +60,7 @@ reviewed and the **current** policy for the source database or volume is applied
 allows the retention policy to be altered and automatically propagate to the DR account.
 
 To see examples of the policies follow the instructions in [Testing](test/README.md)
+
 
 ## Costs
 
@@ -244,6 +246,16 @@ account is 50 at time of writing). Warnings are issued when a snapshot is detect
 does not contain a `Draco_Lifecycle` tag. To suppress these warnings set the tag to the
 value `Ignore`.
 
+### KMS Keys
+
+Unfortunately KMS Keys cannot be imported into a CloudFormation stack. If you wish to
+delete and re-create the stack, this means that the existing DR Encryption key cannot be
+automatically preserved. However the key that is created by the stack is marked for
+retention and so will not be deleted, although it won't be used for future snapshots.
+
+You can if desired, create a separate permanent KMS DR key and specify it's ARN in the the
+Consumer Lambda function's environment variable KEY_ARN
+
 ## Note on Tags
 
 Normally tags cannot be copied from a shared (or public) RDS snapshot. However DRACO sends
@@ -255,11 +267,6 @@ the DR snapshot along with the Draco specific tag specified in `config.yaml`.
 The code is written in NodeJS. There is a Ruby Rakefile that simplifies the development
 process with tasks to set the environment and upload the code to an S3 bucket for
 deployment using the CloudFormation console.
-
-### KMS Permissions
-
-Note that the KMS permissions used in the code are somewhat, but not completely,
-minimalist. You may wish to curtail them further.
 
 ### Rake Tasks
 

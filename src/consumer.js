@@ -45,6 +45,7 @@ exports.handler = async (incoming, context) => {
           enc = "Plaintext";
         }
         try {
+          console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${evt.SourceArn} ...`);
           switch (evt.SnapshotType) {
             case 'RDS Cluster':
             case 'RDS':
@@ -84,7 +85,7 @@ exports.handler = async (incoming, context) => {
             default:
               throw "Invalid Snapshot Type"+evt.SnapshotType;
           }
-          console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${evt.SourceArn} to ${target_id}`);
+          console.log(`Copied to ${target_id}`);
           let sfinput = {
             "event": {
               "EventType": "snapshot-copy-completed",
@@ -105,7 +106,8 @@ exports.handler = async (incoming, context) => {
           break;
           } catch (e) {
             copyfailed = `Copy failed (${e.name}: ${e.message})`;
-            console.error(`${copyfailed}, removing source...`);
+            evt.TargetArn = evt.SourceArn;
+            console.error(`${copyfailed}, removing source ${evt.TargetArn} ...`);
             // Fall through the case to the next one
           }
       }
