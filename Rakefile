@@ -120,7 +120,7 @@ end
 
 desc "Lint the Javascript Code"
 task :es_lint do
-    sh "eslint src"
+    sh "npm run lint src/ test/"
 end
 
 # If bucket in another region use "AWS_REGION=other bundle exec rake upload"

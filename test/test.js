@@ -12,7 +12,7 @@ function dumpRetained(list) {
       console.log(`${s.id}: Day: ${s.dow}, Date: ${s.date}, Week: ${s.week}, Month: ${s.month}`)
     }
   }
-};
+}
 
 describe('Retention', function() {
 
