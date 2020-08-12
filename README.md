@@ -52,8 +52,11 @@ value of the tag `Draco_Lifecycle` which must take on one of several predetermin
    snapshots (for weeks 3 and 4),
 * `Monthly`: this retains a rolling month of daily snapshots,
 * `CurrentMonth`: this retains only those snapshots in the current month,
-* `Standard`: This retains the most recent daily for a week, the most recent weeklies for
+* `Extreme`: This retains the most recent daily for a week, the most recent weeklies for
   a month, the most recent monthlies for a year, and the most recent yearly for 7 years.
+
+Note that these names are not case-sensitive. If an unknown policy is used then no
+snapshots will be deleted.
 
 After a snapshot is copied to DR, all of the snapshots of that type in the DR account are
 reviewed and the **current** policy for the source database or volume is applied. This

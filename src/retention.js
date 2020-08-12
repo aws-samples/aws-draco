@@ -36,9 +36,9 @@ exports.implementPolicy = (snapshot_list, policy) => {
   }).sort((a,b) => a.age - b.age); // youngest first
 
   // Get the Tags on the most recent Snapshot
-  switch (policy) {
+  switch (policy.toLowerCase()) {
     // Keep one per day for a week, weekly for a month, monthly for a year
-    case 'Standard': {
+    case 'extreme': {
       const MAX_YEARS = 7;
       let dailies = 0;
       let weeklies = 0;
@@ -73,7 +73,7 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'Weekly': { // Keep the last seven days
+    case 'weekly': { // Keep the last seven days
       let dailies = 0;
       let date = -1;
       for (let s of snapshots) {
@@ -86,7 +86,7 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'Fortnightly': { // Keep the last fourteen days
+    case 'fortnightly': { // Keep the last fourteen days
       let dailies = 0;
       let date = -1;
       for (let s of snapshots) {
@@ -99,7 +99,7 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'Biweekly': { // Keep just two, one for each of the last two weeks.
+    case 'biweekly': { // Keep just two, one for each of the last two weeks.
       let date = -1;
       let week = -1;
       let weeklies = 0;
@@ -120,7 +120,7 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'SemiMonthly': { // Keep two weeks of dailies then two weeklies (total 16)
+    case 'semimonthly': { // Keep two weeks of dailies then two weeklies (total 16)
       let date = -1;
       let week = -1;
       let dailies = 0;
@@ -140,7 +140,7 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'Monthly': { // Keep a month of dailies
+    case 'monthly': { // Keep a month of dailies
       let date = -1;
       let monthdatetick = (snapshots[0].year * 10000) + (snapshots[0].month-1) * 100 + snapshots[0].date;
       for (let s of snapshots) {
@@ -152,7 +152,7 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'CurrentMonth': { // Keep only the current month
+    case 'currentmonth': { // Keep only the current month
       let date = -1;
       let month = snapshots[0].month;
       for (let s of snapshots) {
@@ -164,12 +164,13 @@ exports.implementPolicy = (snapshot_list, policy) => {
       }
       break;
     }
-    case 'Test': { // Keep up to 3 most recent
+    case 'test': { // Keep up to 3 most recent
       snapshots.forEach((s,ix) => s.retain = ix < 3);
       break;
     }
     default:
       console.log(`Lifecycle '${policy}' not supported`);
+      for (let s of snapshots) s.retain = true;
       break;
   }
   return snapshots;

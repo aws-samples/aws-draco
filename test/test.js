@@ -16,6 +16,14 @@ function dumpRetained(list) {
 
 describe('Retention', function() {
 
+  it ('should retain all if unknown policy', async function() {
+    const marked = await retention.implementPolicy(snapshots, 'Random');
+    dumpRetained(marked);
+    assert.typeOf(marked, 'Array');
+    let kept = marked.filter( s => s.retain).map( s => s.id );
+    assert.lengthOf(kept, snapshots.length);
+  });
+
   it ('should delete according to Test policy', async function() {
     const marked = await retention.implementPolicy(snapshots, 'Test');
     dumpRetained(marked);
@@ -24,9 +32,9 @@ describe('Retention', function() {
     assert.lengthOf(kept, 3);
   });
 
-  describe('with Standard policy', function() {
+  describe('with Extreme policy', function() {
     it ('should work with a month', async function() {
-      const marked = await retention.implementPolicy(snapshots, 'Standard');
+      const marked = await retention.implementPolicy(snapshots, 'Extreme');
       dumpRetained(marked);
       assert.typeOf(marked, 'Array');
       let standard = require('./fixtures/standard_month.json');
@@ -37,7 +45,7 @@ describe('Retention', function() {
     it ('should work with a full year', async function() {
       const fullyear = require('./fixtures/fullyear.json');
       const results = require('./fixtures/standard_fullyear.json');
-      const marked = await retention.implementPolicy(fullyear, 'Standard');
+      const marked = await retention.implementPolicy(fullyear, 'Extreme');
       dumpRetained(marked);
       assert.typeOf(marked, 'Array');
       let kept = marked.filter( s => s.retain).map( s => s.id );
@@ -60,13 +68,24 @@ describe('Retention', function() {
     assert.lengthOf(marked.filter( s => s.retain), 14);
   });
 
-  it ('should delete according to Biweekly policy', async function() {
-    const marked = await retention.implementPolicy(snapshots, 'Biweekly');
-    assert.typeOf(marked, 'Array');
-    dumpRetained(marked);
-    let kept = marked.filter( s => s.retain);
-    assert.lengthOf(kept, 2);
-    assert.equal(kept[0].week, kept[1].week+1);
+  describe('with Biweekly policy', function() {
+    it ('should delete accordingly', async function() {
+      const marked = await retention.implementPolicy(snapshots, 'Biweekly');
+      assert.typeOf(marked, 'Array');
+      dumpRetained(marked);
+      let kept = marked.filter( s => s.retain);
+      assert.lengthOf(kept, 2);
+      assert.equal(kept[0].week, kept[1].week+1);
+    });
+
+    it ('should delete when the case of the policy name is unusual', async function() {
+      const marked = await retention.implementPolicy(snapshots, 'BiWeekly');
+      assert.typeOf(marked, 'Array');
+      dumpRetained(marked);
+      let kept = marked.filter( s => s.retain);
+      assert.lengthOf(kept, 2);
+      assert.equal(kept[0].week, kept[1].week+1);
+    });
   });
 
   it ('should delete according to SemiMonthly policy', async function() {
