@@ -139,32 +139,32 @@ Resources:
 
             logging.getLogger().setLevel(logging.INFO)
 
-            def copy_objects(source_bucket, dest_bucket, prefix, objects):
+            def copy_objects(src_bucket, dst_bucket, prefix, objects):
                 s3 = boto3.client('s3')
                 versions = {}
                 etags = {}
                 for o in objects:
                     try:
-                        rsp = s3.head_object(Bucket=dest_bucket, Key=prefix+o)
+                        rsp = s3.head_object(Bucket=dst_bucket, Key=prefix+o)
                         versions[o] = rsp['VersionId']
                         etags[o] = rsp['ETag']
                     except botocore.exceptions.ClientError as error:
-                        if source_bucket == dest_bucket:
+                        if src_bucket == dst_bucket:
                             raise error
                         versions[o] = None
                         etags[o] = '-'
 
-                    logging.debug(f'{dest_bucket}/{prefix+o}: version={versions[o]}, etag={etags[o]}')
+                    logging.debug(f'{dst_bucket}/{prefix+o}: version={versions[o]}, etag={etags[o]}')
 
-                    if source_bucket != dest_bucket:
+                    if src_bucket != dst_bucket:
                         try:
-                            crsp = s3.copy_object(CopySource=f'{source_bucket}/{prefix+o}',
-                                                  Bucket=dest_bucket, Key=prefix+o,
+                            crsp = s3.copy_object(CopySource=f'{src_bucket}/{prefix+o}',
+                                                  Bucket=dst_bucket, Key=prefix+o,
                                                   CopySourceIfNoneMatch=etags[o])
                             versions[o] = crsp['VersionId']
-                            logging.debug(f'{dest_bucket}/{prefix+o}: copied version={versions[o]}')
+                            logging.debug(f'{dst_bucket}/{prefix+o}: copied version={versions[o]}')
                         except botocore.exceptions.ClientError as error:
-                            logging.debug(f'{dest_bucket}/{prefix+o}: up-to-date')
+                            logging.debug(f'{dst_bucket}/{prefix+o}: up-to-date')
                             if error.response['Error']['Code'] != 'PreconditionFailed':
                                 raise error
 
@@ -185,15 +185,15 @@ Resources:
                 status = cfnresponse.SUCCESS
                 responseData = {}
                 try:
-                    source_bucket = event['ResourceProperties']['SourceBucket']
-                    dest_bucket = event['ResourceProperties']['DestBucket']
+                    src_bucket = event['ResourceProperties']['SourceBucket']
+                    dst_bucket = event['ResourceProperties']['DestBucket']
                     physical_resource_id = event['ResourceProperties']['PhysicalResourceId']
                     prefix = event['ResourceProperties']['Prefix']
                     objects = event['ResourceProperties']['Objects']
                     if event['RequestType'] != 'Delete': # Leave the objects in the bucket
-                        versions = copy_objects(source_bucket, dest_bucket, prefix, objects)
+                        versions = copy_objects(src_bucket, dst_bucket, prefix, objects)
                         responseData = versions
-                        logging.info(f'Versions: {versions}')
+                        logging.info(f'Bucket: {src_bucket} has versions: {versions}')
                 except Exception as e:
                     logging.error(f'Exception: {e}', exc_info=True)
                     status = cfnresponse.FAILED

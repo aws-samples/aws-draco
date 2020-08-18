@@ -124,7 +124,7 @@ Resources:
                     if event['RequestType'] != 'Delete':
                         versions = get_object_versions(src_bucket, prefix, objects)
                         responseData = versions
-                        logging.info(f'Versions: {versions}')
+                        logging.info(f'Bucket: {src_bucket} has versions: {versions}')
                 except Exception as e:
                     logging.error(f'Exception: {e}', exc_info=True)
                     status = cfnresponse.FAILED
