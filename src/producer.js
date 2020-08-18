@@ -146,7 +146,7 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'EBS';
         let source_id = evt.detail.snapshot_id.split(':snapshot/')[1];
         let taglist = await common.getEC2SnapshotTags(ec2, source_id);
-        let lifecycleTag = rsp.TagList.find(tag => tag.Key == 'Draco_Lifecycle')
+        let lifecycleTag = taglist.find(tag => tag.Key == 'Draco_Lifecycle')
         if (lifecycleTag === undefined) {
           console.warn(`Ignoring ${evt.SnapshotType} Snapshot ${source_id}: no Draco_Lifecycle tag`);
           break;
