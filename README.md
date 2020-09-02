@@ -35,11 +35,11 @@ Author: Nick Townsend (nicktown@amazon.com)
 
 Once installed DRACO will copy every EBS and RDS snapshot taken in the designated
 'Production' account that is tagged with `Draco_Lifecycle` across to the designated
-'Disaster Recovery' account and re-encrypt them with a key known only to the DR account.
-(Note that copying unencrypted RDS cluster snapshots with encryption is not supported, so
-these will be copied across and stored as-is.) There they will accumulate continuously,
-subject to a retention policy. The retention policy for a snapshot is determined by the
-value of the tag `Draco_Lifecycle` which must take on one of several predetermined values:
+'Disaster Recovery' account and re-encrypt them with a key known only to the DR account
+(subject to Limitations - see below).
+There they will accumulate continuously, subject to a retention policy. The retention
+policy for a snapshot is determined by the value of the tag `Draco_Lifecycle` which must
+take on one of several predetermined values:
 
 * `Ignore`: No action will be taken. Useful to suppress the warning messages that would
    otherwise be produced.
@@ -69,11 +69,14 @@ To see examples of the policies follow the instructions in [Testing](test/README
 
 Minimal. See the approximate [cost calculation](COST.md)
 
-## Limits
+## Limitations
 
 Your DR account must have the snapshot limit set so that all the desired snapshots can be
 retained. The default limit is 50. If this limit is exceeded DRACO cannot function and
 will log an ERROR message to CloudWatch logs.
+
+Copying unencrypted RDS cluster snapshots with encryption is not supported, so
+these will be copied across and stored as-is.
 
 # Installation
 
