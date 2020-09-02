@@ -123,6 +123,13 @@ task :es_lint do
     sh "npm run lint src/ test/"
 end
 
+task :bucket_warning do
+    bucket = "draco-#{ENV['DR_ACCT']}-#{ENV['AWS_REGION']}"
+    print "\nIs the Lambda code updated in S3 Bucket '#{bucket}'? (C to Continue): "
+    s = STDIN.getc
+    exit 2 unless s =~ /^C/i
+end
+
 # If bucket in another region use "AWS_REGION=other bundle exec rake upload"
 #
 desc "Upload Lambda packages to S3"
@@ -163,7 +170,7 @@ end
 
 namespace :create do
     desc "Create Producer Stack (run in Production account)"
-    task :producer do
+    task :producer => :bucket_warning do
 	sh "cfn-lint cloudformation/producer.yaml"
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	cfn.create_stack(
@@ -201,7 +208,7 @@ end
 
 namespace :update do
     desc "Update Producer Stack (run in Production account)"
-    task :producer do
+    task :producer => :bucket_warning do
 	sh "cfn-lint cloudformation/producer.yaml"
 	cfn = Aws::CloudFormation::Client.new(region: ENV['AWS_REGION'])
 	rsp = cfn.update_stack(
@@ -240,6 +247,24 @@ namespace :update do
 end
 
 namespace :event do
+    desc "Send a snapshot get key event to the Consumer"
+    task :snapshot_get_key, [:resource_id]  do |t, args|
+	resource_id = args[:resource_id] || 'testing'
+	puts "Resource ID: #{resource_id}"
+	sns = Aws::SNS::Resource.new(region: ENV['AWS_REGION'])
+	topic = sns.topic(ENV['DR_TOPIC_ARN'])
+	event = {   'EventType': 'snapshot-get-key',
+		    'SnapshotType': 'RDS',
+		    'ResourceId': resource_id,
+		    'ProdAcct': ENV['PROD_ACCT'],
+		    'SourceArn': 'dummy' }
+	topic.publish({
+	    subject: 'DRACO Event',
+	    message: event.to_json
+	})
+	puts "Sent #{event}"
+    end
+
     desc "Send a snapshot copy complete event to the #{$role}"
     task :snapshot_copy_complete, [:snapshot_id]  do |t, args|
 	rds = Aws::RDS::Client.new(region: ENV['AWS_REGION'])

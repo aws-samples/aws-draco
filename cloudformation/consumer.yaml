@@ -235,11 +235,10 @@ Resources:
             - kms:DescribeKey
           Resource: '*'
           
-  # Permissions on kms should be tightened
-  #
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub DracoConsumer-${AWS::Region}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -286,20 +285,35 @@ Resources:
               Action:
                 - sns:Publish
               Resource: !Sub "arn:aws:sns:${AWS::Region}:${SourceAcct}:DracoProducer"
-        - PolicyName: DecryptSnapshots
+        - PolicyName: KeyManagement
           PolicyDocument:
             Statement:
             - Effect: Allow
               Action:
-              - kms:Encrypt
-              - kms:Decrypt
-              - kms:ReEncrypt*
-              - kms:GenerateDataKey*
-              - kms:ListGrants
-              - kms:RevokeGrant
-              - kms:CreateGrant
               - kms:DescribeKey
+              - kms:CreateKey
+              - kms:TagResource
               Resource: '*'
+        - PolicyName: KeyUsage
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - kms:CreateGrant
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey*
+              Resource: '*'
+        - PolicyName: SaveKeys
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject*
+                - s3:PutObject
+              Resource:
+                - !Sub 'arn:aws:s3:::${DracoRegionalBucket}/keys*'
         - PolicyName: AllowStepfunctions
           PolicyDocument:
             Statement:
