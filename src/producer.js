@@ -58,6 +58,8 @@ exports.handler = async (incoming, context) => {
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': { // Manual Snapshot Created
+        let kms_id = await common.getSnapshotKmsId("RDS", rds, evt.SourceId);
+        console.log(`RDS Snapshot ${evt.SourceId} has kms_id '${kms_id}'`);
         let target_id = ((evt.EventType == 'RDS-EVENT-0091')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
@@ -97,6 +99,8 @@ exports.handler = async (incoming, context) => {
 
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0075': { // Manual Cluster Snapshot Created
+        let kms_id = await common.getSnapshotKmsId("RDS Cluster", rds, evt.SourceId);
+        console.log(`RDS Cluster Snapshot ${evt.SourceId} has kms_id '${kms_id}'`);
         let target_id = ((evt.EventType == 'RDS-EVENT-0169')?  evt.SourceId.split(':')[1]: evt.SourceId) + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
@@ -143,6 +147,8 @@ exports.handler = async (incoming, context) => {
       }
 
       case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
+        let kms_id = await common.getSnapshotKmsId("EBS", ec2, evt.SourceId);
+        console.log(`RDS Cluster Snapshot ${evt.SourceId} has kms_id '${kms_id}'`);
         evt.SnapshotType = 'EBS';
         let source_id = evt.detail.snapshot_id.split(':snapshot/')[1];
         let taglist = await common.getEC2SnapshotTags(ec2, source_id);

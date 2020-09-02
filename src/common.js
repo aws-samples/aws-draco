@@ -16,4 +16,36 @@ exports.getEC2SnapshotTags = async (ec2, snap_id) => {
   return taglist;
 }
 
+/*
+/* Determine whether the snapshot is encrypted and if so return it's KMS key
+ */
+exports.getSnapshotKmsId = async (snapshot_type, service, snap_id) => {
+  let params = {};
+  let rsp, snapshots, encrypted;
+  switch (snapshot_type) {
+    case 'RDS Cluster':
+      params.Filters = [ { Name: "db-cluster-snapshot-id", Values: [ snap_id ] } ];
+      rsp = await service.describeDBClusterSnapshots(params).promise();
+      snapshots = rsp.DBClusterSnapshots;
+      encrypted = snapshots[0].Encrypted;
+      break;
+    case 'RDS':
+      params.Filters = [ { Name: "db-snapshot-id", Values: [ snap_id ] } ];
+      rsp = await service.describeDBSnapshots(params).promise();
+      snapshots = rsp.DBSnapshots;
+      encrypted = snapshots[0].StorageEncrypted;
+      break;
+    case 'EBS':
+      params.SnapshotIds = [ snap_id ];
+      rsp = await service.describeSnapshots(params).promise();
+      snapshots = rsp.Snapshots;
+      encrypted = snapshots[0].Encrypted;
+      break;
+    default:
+      throw "Invalid Snapshot Type: "+snapshot_type;
+  }
+  if (process.env.DEBUG) console.debug(`Snapshot ${snap_id}: ${JSON.stringify(snapshots[0])}`);
+  let kms_id = encrypted ? snapshots[0].KmsKeyId: undefined;
+  return kms_id;
+}
 // vim: sts=2 et sw=2:
