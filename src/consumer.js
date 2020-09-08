@@ -8,7 +8,6 @@ const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 const s3 = new AWS.S3({apiVersion: '2006-03-01'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
-const key_arn = process.env.KEY_ARN;
 const dr_acct = process.env.DR_ACCT;
 const tagkey = process.env.TAG_KEY;
 const tagval = process.env.TAG_VALUE;
@@ -34,86 +33,21 @@ exports.handler = async (incoming, context) => {
     let taglist = evt.TagList || [];
     taglist.push({ Key: tagkey, Value: tagval });
     let target_arn, target_id;
-    let copyfailed = undefined;
 
     switch (evt.EventType) {
 
-      case 'snapshot-get-key': {
-        let key_id;
-        let bucket = `draco-${dr_acct}-${process.env.AWS_REGION}`;
-        let key = `keys/${evt.ResourceId}`;
-        let s3params = { Bucket: bucket, Key: key };
-        try {
-          console.log(`Checking key for resource '${evt.ResourceId}'...`);
-          let rsp = s3.getObject(s3params);
-          key_id = rsp.Body.toString('utf-8');
-          console.debug(`Found key ${key_id}`);
-        } catch (e) {
-          console.debug(`Key not found, allocating...`);
-          let policy = {
-            Version: '2012-10-17',
-            Id: 'dr_key_policy',
-            Statement:
-              [
-                {
-                  Sid: "DR Root account full access",
-                  Effect: "Allow",
-                  Principal: {
-                    AWS: `arn:aws:iam::${dr_acct}:root`
-                  },
-                  Action: "kms:*",
-                  Resource: '*'
-                },
-                {
-                  Sid: "Allow Producer to encrypt with the key",
-                  Effect: "Allow",
-                  Principal: {
-                    AWS: `arn:aws:iam::${evt.ProdAcct}:role/DracoProducer-${process.env.AWS_REGION}`
-                  },
-                  Action: [
-                    'kms:Encrypt',
-                    'kms:ReEncrypt*',
-                    'kms:GenerateDataKey*',
-                    'kms:DescribeKey'
-                  ],
-                  Resource: '*'
-                },
-                {
-                  Sid: "Allow Producer to use this key with RDS and EC2",
-                  Effect: "Allow",
-                  Principal: {
-                    AWS: `arn:aws:iam::${evt.ProdAcct}:role/DracoProducer-${process.env.AWS_REGION}`
-                  },
-                  Action: [
-                    "kms:CreateGrant",
-                    "kms:ListGrants",
-                    "kms:RevokeGrant"
-                  ],
-                  Resource: "*",
-                  Condition: {
-                    Bool: { "kms:GrantIsForAWSResource": "true"} }
-                }
-              ]
-          }
-          console.debug(`Key Policy: ${JSON.stringify(policy)}`);
-          let p1 = {
-            Policy: JSON.stringify(policy),
-            Description: `DRACO key for ${evt.ResourceId}`,
-            BypassPolicyLockoutSafetyCheck: true,
-            Tags: [
-              {
-                TagKey: tagkey,
-                TagValue: tagval
-              }
-            ]
-          };
-          let rsp = await kms.createKey(p1).promise();
-          key_id = rsp.KeyMetadata.KeyId;
-          s3params.Body = Buffer.from(key_id, "utf-8");
-          s3.putObject(s3params);
-        }
-        evt.EventType = "snapshot-copy-with-key";
-        evt.KeyId = key_id;
+      // This message takes a normalized event representing the production snapshot
+      // and decides whether it should be copied to DR. If not then it returns a
+      // 'snapshot-no-copy' message. If it should then it determines
+      // which KMS encryption key should be used and returns the original message with
+      // the added field TargetKmsId.
+
+      case 'snapshot-copy-request': {
+        if (doNotCopy(evt)) break;
+        let key_id = getEncryptionKey(evt.SourceName, evt.ProdAcct);
+
+        evt.EventType = "snapshot-copy-initiate";
+        evt.TargetKmsId = key_id;
         let p2 = {
           TopicArn: producer_topic_arn,
           Subject: "DRACO Event",
@@ -128,7 +62,7 @@ exports.handler = async (incoming, context) => {
         let params = { };
         let enc;
         if (evt.Encrypted) {
-          params.KmsKeyId = key_arn;
+          params.KmsKeyId = evt.TargetKmsId;
           enc = "Encrypted";
         } else {
           enc = "Plaintext";
@@ -156,10 +90,10 @@ exports.handler = async (incoming, context) => {
               break;
             case 'EBS':
               params.SourceSnapshotId = evt.SourceArn.split(':snapshot/')[1];
-              params.Description  = `Draco snapshot of ${evt.SourceVol}`;
+              params.Description  = `Draco snapshot of ${evt.SourceName}`;
               params.SourceRegion = evt.SourceArn.split(':')[4];
               params.DestinationRegion = params.SourceRegion;
-              params.Encrypted = ('KmsKeyId' in params);
+              params.Encrypted = evt.Encrypted;
               if (taglist.length > 0) {
                 let TagSpec = {
                   ResourceType: "snapshot",
@@ -192,32 +126,17 @@ exports.handler = async (incoming, context) => {
           };
           output = await sf.startExecution(sfparams).promise();
           console.log(`Starting wait4copy: ${JSON.stringify(sfinput)}`);
-          break;
           } catch (e) {
-            copyfailed = `Copy failed (${e.name}: ${e.message})`;
+            evt.Error = `Copy failed (${e.name}: ${e.message})`;
             evt.TargetArn = evt.SourceArn;
-            console.error(`${copyfailed}, removing source ${evt.TargetArn} ...`);
-            // Fall through the case to the next one
+            console.error(`${evt.Error}, removing source ${evt.TargetArn} ...`);
+            deleteSourceSnapshot(evt);
           }
+          break;
       }
       // Tell the owning account to delete
-      case 'snapshot-copy-completed': { // eslint-disable-line no-fallthrough
-        // Wait4Copy always uses SourceArn for the snapshot being created,
-        // and the one being copied from is the target_arn
-        //
-        let snsevent = {
-          "EventType": "snapshot-delete-shared",
-          "SnapshotType": evt.SnapshotType,
-          "SourceArn": evt.TargetArn,
-          "Error": copyfailed
-        };
-        let p2 = {
-          TopicArn: producer_topic_arn,
-          Subject: "DRACO Event",
-          Message: JSON.stringify(snsevent)
-        };
-        output = await sns.publish(p2).promise();
-        console.log(`Published: ${JSON.stringify(snsevent)}`);
+      case 'snapshot-copy-completed': {
+        deleteSourceSnapshot(evt);
         try {
           await lifeCycle(evt.SnapshotType);
         } catch (e) {
@@ -238,6 +157,146 @@ exports.handler = async (incoming, context) => {
   }
   return { statusCode: status, body: JSON.stringify(output), };
 };
+/*
+ * Check whether the copy should proceed
+ * If not then send a no-copy message back to the producer
+ * returns true or false
+ */
+async function doNotCopy(evt) {
+  let copy = true;
+  let lifecycleTag = evt.TagList.find(tag => tag.Key == 'Draco_Lifecycle')
+  if (lifecycleTag === undefined) {
+    evt.Reason = 'No Draco_Lifecycle tag';
+    copy = false;
+  }
+  if (lifecycleTag.Value.toLowerCase() == 'ignore') {
+    evt.Reason = 'Ignored';
+    copy = false;
+  }
+  if (!copy) {
+    evt.EventType = 'snapshot-no-copy'
+    let p2 = {
+      TopicArn: producer_topic_arn,
+      Subject: "DRACO Event",
+      Message: JSON.stringify(evt)
+    };
+    let output = await sns.publish(p2).promise();
+    console.warn(`Not Copying #{evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
+    console.debug(`Publish response: ${JSON.stringify(output)}`);
+  }
+  return !copy;
+}
+
+/*
+ * Retrieve the encryption key for the source.
+ *
+ * It uses the SourceName (the name of the Database or EBS Volume) to
+ * lookup the key used to encrypt the snapshots. These keys are held
+ * in the Regional Draco S3 Bucket as objects with the name
+ * 'keys/{SourceName}' containing the key id. If the key doesn't exist
+ * one is created.
+ *
+ * Returns the KMS Id of the key
+ */
+async function getEncryptionKey(sourceName, prodAcct) {
+  let bucket = `draco-${dr_acct}-${process.env.AWS_REGION}`;
+  let key = `keys/${sourceName}`;
+  let s3params = { Bucket: bucket, Key: key };
+  let key_id;
+  try {
+    console.debug(`Getting key for resource '${sourceName}'...`);
+    let rsp = s3.getObject(s3params);
+    key_id = rsp.Body.toString('utf-8');
+    console.debug(`Found existing key ${key_id}`);
+  } catch (e) {
+    console.debug(`Key not found, allocating...`);
+    let policy = {
+      Version: '2012-10-17',
+      Id: 'dr_key_policy',
+      Statement:
+        [
+          {
+            Sid: "DR Root account full access",
+            Effect: "Allow",
+            Principal: {
+              AWS: `arn:aws:iam::${dr_acct}:root`
+            },
+            Action: "kms:*",
+            Resource: '*'
+          },
+          {
+            Sid: "Allow Producer to encrypt with the key",
+            Effect: "Allow",
+            Principal: {
+              AWS: `arn:aws:iam::${prodAcct}:role/DracoProducer-${process.env.AWS_REGION}`
+            },
+            Action: [
+              'kms:Encrypt',
+              'kms:ReEncrypt*',
+              'kms:GenerateDataKey*',
+              'kms:DescribeKey'
+            ],
+            Resource: '*'
+          },
+          {
+            Sid: "Allow Producer to use this key with RDS and EC2",
+            Effect: "Allow",
+            Principal: {
+              AWS: `arn:aws:iam::${prodAcct}:role/DracoProducer-${process.env.AWS_REGION}`
+            },
+            Action: [
+              "kms:CreateGrant",
+              "kms:ListGrants",
+              "kms:RevokeGrant"
+            ],
+            Resource: "*",
+            Condition: {
+              Bool: { "kms:GrantIsForAWSResource": "true"} }
+          }
+        ]
+    }
+    console.debug(`Key Policy: ${JSON.stringify(policy)}`);
+    let p1 = {
+      Policy: JSON.stringify(policy),
+      Description: `DRACO key for ${sourceName}`,
+      BypassPolicyLockoutSafetyCheck: true,
+      Tags: [
+        {
+          TagKey: tagkey,
+          TagValue: tagval
+        }
+      ]
+    };
+    let rsp = await kms.createKey(p1).promise();
+    key_id = rsp.KeyMetadata.KeyId;
+    s3params.Body = Buffer.from(key_id, "utf-8");
+    s3.putObject(s3params);
+  }
+  return key_id
+}
+
+/*
+ * Ask the producer to delete the snapshot
+ * Wait4Copy always uses SourceArn for the snapshot being created,
+ * and the one being copied from is the target_arn
+ */
+async function deleteSourceSnapshot(evt) {
+  let snsevent = {
+    "EventType": "snapshot-delete-shared",
+    "SnapshotType": evt.SnapshotType,
+    "SourceArn": evt.TargetArn,
+    "Error": evt.Error
+  };
+  let p2 = {
+    TopicArn: producer_topic_arn,
+    Subject: "DRACO Event",
+    Message: JSON.stringify(snsevent)
+  };
+  let output = await sns.publish(p2).promise();
+  console.info(`Published: ${JSON.stringify(snsevent)}`);
+  console.debug(`Publish response: ${JSON.stringify(output)}`);
+}
+
 /*
  * Retrieve a list of all the snapshots of this type that Draco has taken,
  * check the lifecycle policy and delete if necessary.
