@@ -64,7 +64,7 @@ exports.handler = async (incoming, context) => {
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
-        requestCopy(evt);
+        await requestCopy(evt);
         break;
 
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
@@ -76,7 +76,7 @@ exports.handler = async (incoming, context) => {
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
-        requestCopy(evt);
+        await requestCopy(evt);
         break;
 
 
@@ -89,7 +89,7 @@ exports.handler = async (incoming, context) => {
         evt.SourceName = evt.detail.source;
         evt.Region = evt.detail.snapshot_id.split(':')[4];
         evt.EndTime = evt.detail.endTime;
-        requestCopy(evt);
+        await requestCopy(evt);
         break;
       }
 

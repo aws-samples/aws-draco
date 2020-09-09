@@ -43,8 +43,8 @@ exports.handler = async (incoming, context) => {
       // the added field TargetKmsId.
 
       case 'snapshot-copy-request': {
-        if (doNotCopy(evt)) break;
-        let key_id = getEncryptionKey(evt.SourceName, evt.ProdAcct);
+        if (await doNotCopy(evt)) break;
+        let key_id = await getEncryptionKey(evt.SourceName, evt.ProdAcct);
 
         evt.EventType = "snapshot-copy-initiate";
         evt.TargetKmsId = key_id;
@@ -130,13 +130,13 @@ exports.handler = async (incoming, context) => {
             evt.Error = `Copy failed (${e.name}: ${e.message})`;
             evt.TargetArn = evt.SourceArn;
             console.error(`${evt.Error}, removing source ${evt.TargetArn} ...`);
-            deleteSourceSnapshot(evt);
+            await deleteSourceSnapshot(evt);
           }
           break;
       }
       // Tell the owning account to delete
       case 'snapshot-copy-completed': {
-        deleteSourceSnapshot(evt);
+        await deleteSourceSnapshot(evt);
         try {
           await lifeCycle(evt.SnapshotType);
         } catch (e) {
