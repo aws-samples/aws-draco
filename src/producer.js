@@ -58,7 +58,7 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': // Manual Snapshot Created
         evt.SourceKmsId = await common.getSnapshotKmsId("RDS", rds, evt.SourceId);
-        evt.Encrypted = (evt.SourceKmsId === undefined);
+        evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.SourceName = (evt.EventType == 'RDS-EVENT-0091') ?  evt.SourceId.split(':')[1]: evt.SourceId;
         evt.TargetId = evt.SourceName + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
@@ -70,7 +70,7 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0075': // Manual Cluster Snapshot Created
         evt.SourceKmsId = await common.getSnapshotKmsId("RDS Cluster", rds, evt.SourceId);
-        evt.Encrypted = (evt.SourceKmsId === undefined);
+        evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.SourceName = (evt.EventType == 'RDS-EVENT-0169') ?  evt.SourceId.split(':')[1]: evt.SourceId;
         evt.TargetId = evt.SourceName + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
@@ -82,7 +82,7 @@ exports.handler = async (incoming, context) => {
 
       case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
         evt.SourceKmsId = await common.getSnapshotKmsId("EBS", ec2, evt.SourceId);
-        evt.Encrypted = (evt.SourceKmsId === undefined);
+        evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.SnapshotType = 'EBS';
         evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
         evt.TagList = await common.getEC2SnapshotTags(ec2, evt.SourceId);

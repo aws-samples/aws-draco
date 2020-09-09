@@ -47,7 +47,7 @@ exports.getSnapshotKmsId = async (snapshot_type, service, snap_id) => {
   }
   if (process.env.DEBUG) console.debug(`Snapshot ${snap_id}: ${JSON.stringify(snapshots[0])}`);
   let kms_id = encrypted ? snapshots[0].KmsKeyId: undefined;
-  console.info(`#{snapshot_type} Snapshot ${snap_id} has kms_id '${kms_id}'`);
+  console.info(`${snapshot_type} Snapshot ${snap_id} has kms_id '${kms_id}'`);
   return kms_id;
 }
 // vim: sts=2 et sw=2:

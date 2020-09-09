@@ -169,7 +169,7 @@ async function doNotCopy(evt) {
     evt.Reason = 'No Draco_Lifecycle tag';
     copy = false;
   }
-  if (lifecycleTag.Value.toLowerCase() == 'ignore') {
+  else if (lifecycleTag.Value.toLowerCase() == 'ignore') {
     evt.Reason = 'Ignored';
     copy = false;
   }
