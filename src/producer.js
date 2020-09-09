@@ -6,6 +6,7 @@ const ec2 = new AWS.EC2({apiVersion: '2016-11-15'});
 const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
+const sts = new AWS.STS({apiVersion: '2011-06-15'});
 const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
@@ -56,6 +57,9 @@ exports.handler = async (incoming, context) => {
     // 'incoming' is now normalized into 'evt'
     if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
+      case 'RDS-EVENT-0040': // Ignore these unused messages
+        break;
+
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': // Manual Snapshot Created
         evt.SnapshotType = 'RDS';
@@ -268,6 +272,7 @@ exports.handler = async (incoming, context) => {
  */
 async function requestCopy(evt) {
   evt.EventType = "snapshot-copy-request";
+  evt.SourceAcct = await sts.getCallerIdentity({})['Account']
   let p3 = {
     TopicArn: dr_topic_arn,
     Subject: "DRACO Event",

@@ -45,7 +45,7 @@ exports.handler = async (incoming, context) => {
 
       case 'snapshot-copy-request': {
         if (await doNotCopy(evt)) break;
-        let key_id = await getEncryptionKey(evt.SourceName, evt.ProdAcct);
+        let key_id = await getEncryptionKey(evt.SourceName, evt.SourceAcct);
 
         evt.EventType = "snapshot-copy-initiate";
         evt.TargetKmsId = key_id;
