@@ -225,6 +225,18 @@ Resources:
                 - ec2:ModifySnapshotAttribute
                 - ec2:DeleteSnapshot
               Resource: '*'
+        - PolicyName: KeyUsage
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - kms:CreateGrant
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey*
+              Resource: !Sub "arn:aws:kms:${AWS::Region}:${TargetAcct}:key/*"
         - PolicyName: AllowPublish2DrTopic
           PolicyDocument:
             Statement:
