@@ -272,7 +272,9 @@ exports.handler = async (incoming, context) => {
  */
 async function requestCopy(evt) {
   evt.EventType = "snapshot-copy-request";
-  evt.SourceAcct = await sts.getCallerIdentity({})['Account']
+  let data = await sts.getCallerIdentity({}).promise();
+  if (DEBUG) console.debug(`STS Caller Identity: ${JSON.stringify(data)}`);
+  evt.SourceAcct = data.Account;
   let p3 = {
     TopicArn: dr_topic_arn,
     Subject: "DRACO Event",
@@ -280,6 +282,6 @@ async function requestCopy(evt) {
   };
   let output = await sns.publish(p3).promise();
   console.info(`Published: ${JSON.stringify(evt)}`);
-  console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
 }
 // vim: sts=2 et sw=2:
