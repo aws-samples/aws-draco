@@ -15,19 +15,20 @@ const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
 const common = require('./common.js');
+const DEBUG = process.env.DEBUG;
 
 exports.handler = async (incoming, context) => {
   var output = 'nothing';
   var status = 200;
 
   try {
-    if (process.env.DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
     let evt = JSON.parse(record.Sns.Message);
-    if (process.env.DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
+    if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
 
     // cannot copy tags on shared (or public) RDS snapshots or on EBS so use ones passed in message
     let taglist = evt.TagList || [];
@@ -54,7 +55,7 @@ exports.handler = async (incoming, context) => {
           Message: JSON.stringify(evt)
         };
         output = await sns.publish(p2).promise();
-        console.debug(`SNS Publish: ${JSON.stringify(output)}`);
+        if (DEBUG) console.debug(`SNS Publish: ${JSON.stringify(output)}`);
         console.log(`Published: ${JSON.stringify(evt)}`);
         break;
       }
@@ -181,8 +182,8 @@ async function doNotCopy(evt) {
       Message: JSON.stringify(evt)
     };
     let output = await sns.publish(p2).promise();
-    console.warn(`Not Copying #{evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
-    console.debug(`Publish response: ${JSON.stringify(output)}`);
+    console.warn(`Not Copying ${evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
+    if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
   }
   return !copy;
 }
@@ -204,12 +205,12 @@ async function getEncryptionKey(sourceName, prodAcct) {
   let s3params = { Bucket: bucket, Key: key };
   let key_id;
   try {
-    console.debug(`Getting key for resource '${sourceName}'...`);
+    if (DEBUG) console.debug(`Getting key for resource '${sourceName}'...`);
     let rsp = s3.getObject(s3params);
     key_id = rsp.Body.toString('utf-8');
-    console.debug(`Found existing key ${key_id}`);
+    if (DEBUG) console.debug(`Found existing key ${key_id}`);
   } catch (e) {
-    console.debug(`Key not found, allocating...`);
+    if (DEBUG) console.debug(`Key not found, allocating...`);
     let policy = {
       Version: '2012-10-17',
       Id: 'dr_key_policy',
@@ -255,7 +256,7 @@ async function getEncryptionKey(sourceName, prodAcct) {
           }
         ]
     }
-    console.debug(`Key Policy: ${JSON.stringify(policy)}`);
+    if (DEBUG) console.debug(`Key Policy: ${JSON.stringify(policy)}`);
     let p1 = {
       Policy: JSON.stringify(policy),
       Description: `DRACO key for ${sourceName}`,
@@ -294,7 +295,7 @@ async function deleteSourceSnapshot(evt) {
   };
   let output = await sns.publish(p2).promise();
   console.info(`Published: ${JSON.stringify(snsevent)}`);
-  console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
 }
 
 /*

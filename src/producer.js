@@ -10,6 +10,7 @@ const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
 const common = require('./common.js');
+const DEBUG = process.env.DEBUG;
 
 exports.handler = async (incoming, context) => {
   var output;
@@ -18,7 +19,7 @@ exports.handler = async (incoming, context) => {
   var rsp = {};
 
   try {
-    if (process.env.DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
     let evt = {};
     if ("Records" in incoming) {
       let record = incoming.Records[0];
@@ -53,10 +54,11 @@ exports.handler = async (incoming, context) => {
       evt.SourceId = incoming.detail.snapshot_id;
     }
     // 'incoming' is now normalized into 'evt'
-    if (process.env.DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
+    if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': // Manual Snapshot Created
+        evt.SnapshotType = 'RDS';
         evt.SourceKmsId = await common.getSnapshotKmsId("RDS", rds, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.SourceName = (evt.EventType == 'RDS-EVENT-0091') ?  evt.SourceId.split(':')[1]: evt.SourceId;
@@ -69,6 +71,7 @@ exports.handler = async (incoming, context) => {
 
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0075': // Manual Cluster Snapshot Created
+        evt.SnapshotType = 'RDS Cluster';
         evt.SourceKmsId = await common.getSnapshotKmsId("RDS Cluster", rds, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.SourceName = (evt.EventType == 'RDS-EVENT-0169') ?  evt.SourceId.split(':')[1]: evt.SourceId;
@@ -81,9 +84,9 @@ exports.handler = async (incoming, context) => {
 
 
       case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
+        evt.SnapshotType = 'EBS';
         evt.SourceKmsId = await common.getSnapshotKmsId("EBS", ec2, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
-        evt.SnapshotType = 'EBS';
         evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
         evt.TagList = await common.getEC2SnapshotTags(ec2, evt.SourceId);
         evt.SourceName = evt.detail.source;
@@ -241,6 +244,9 @@ exports.handler = async (incoming, context) => {
         break;
       }
 
+      case 'snapshot-no-copy':
+        console.warn(`${evt.SnapshotType} Snapshot ${evt.SourceId} not copied: ${evt.Reason}`);
+        break;
 
       default:
         output = 'Unhandled event: ' + evt.EventType;
