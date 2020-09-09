@@ -57,7 +57,10 @@ exports.handler = async (incoming, context) => {
     // 'incoming' is now normalized into 'evt'
     if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
-      case 'RDS-EVENT-0040': // Ignore these unused messages
+      case 'RDS-EVENT-0040':
+      case 'RDS-EVENT-0074':
+      case 'RDS-EVENT-0090':
+      case 'RDS-EVENT-0168':
         break;
 
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
