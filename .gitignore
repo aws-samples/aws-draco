@@ -1,5 +1,6 @@
 # For this project
 config.yaml
+build/
 
 # For Ruby
 vendor/bundle

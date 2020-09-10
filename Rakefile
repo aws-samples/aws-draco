@@ -9,6 +9,7 @@ require 'aws-sdk-rds'
 require 'aws-sdk-sns'
 require 'json'
 require 'fileutils'
+require 'pathname'
 require 'pp'
 require 'tempfile'
 require 'yaml'
@@ -130,38 +131,47 @@ task :bucket_warning do
     exit 2 unless s =~ /^C/i
 end
 
+# Upload the given file to the S3 bucket and key if it has changed
+#
+def uploadIfChanged file, bucket, key
+    s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
+    etag = `md5 -q #{file}`.chomp;
+    rsp = s3.head_object(bucket: bucket, key: key) rescue { etag: '""' }
+    s3etag = rsp[:etag][1..-2] # remove the double quotes
+    if s3etag != etag
+	File.open(file, "rb") do |f|
+	    rsp = s3.put_object(bucket: bucket, key: key, body: f)
+	    puts "File #{file} -> s3://#{bucket}/#{key} (version: #{rsp.version_id})"
+	end
+	return 1
+    else
+	return 0
+    end
+end
+
 # If bucket in another region use "AWS_REGION=other bundle exec rake upload"
 #
 desc "Upload Lambda packages to S3"
 task :upload => [:es_lint, :cfn_lint, :test] do
     begin
-    s3 = Aws::S3::Client.new(region: ENV['AWS_REGION'])
-    manifests = {
-	producer: %w(producer.js common.js),
-	consumer: %w(consumer.js common.js retention.js),
-	wait4copy: %w(wait4copy.js)
-    }
-    manifests.each do |package, files|
-	puts("Doing #{package} package containing #{files.join(' ')}")
-	tf = Tempfile.new(package.to_s)
-	cd 'src', verbose: false do
-	    sh "zip -q #{tf.path}.zip #{files.join(' ')}", verbose: false
-	    puts "Zipfile for #{package} created"
-	end
-	File.open("#{tf.path}.zip", "rb") { |f|
-	    rsp = s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{package}.zip",
-			       	body: f, acl: "authenticated-read")
-	    puts "Lambda #{package} version: #{rsp[:version_id]}"
+	nUpload = 0
+	manifests = {
+	    producer: %w(producer.js common.js),
+	    consumer: %w(consumer.js common.js retention.js),
+	    wait4copy: %w(wait4copy.js)
 	}
-	cd 'cloudformation', verbose: false do
-	    File.open("#{package}.yaml", "r") { |f|
-		s3.put_object(bucket: ENV['SOURCE_BUCKET'], key: "draco/#{package}.yaml",
-			      body: f, acl: "authenticated-read")
-	    }
+	manifests.each do |package, files|
+	    zipfile = Pathname.pwd + "build/#{package}.zip"
+	    cd 'src', verbose: false do
+		sh "zip -qu #{zipfile} #{files.join(' ')}", verbose: false rescue nil
+	    end
+	    nUpload += uploadIfChanged zipfile, ENV['SOURCE_BUCKET'], "draco/#{zipfile.basename}"
+	    cd 'cloudformation', verbose: false do
+		file = "#{package}.yaml"
+		nUpload += uploadIfChanged file, ENV['SOURCE_BUCKET'], "draco/#{file}"
+	    end
 	end
-	puts "#{package}.{yaml,zip} uploaded to s3://#{ENV['SOURCE_BUCKET']}/draco"
-	tf.unlink
-    end
+	puts "#{nUpload} files uploaded"
     rescue
 	puts $!.inspect
 	exit 1
