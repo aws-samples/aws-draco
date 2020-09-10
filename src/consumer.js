@@ -213,7 +213,7 @@ async function getEncryptionKey(sourceName) {
   let key_id;
   try {
     if (DEBUG) console.debug(`Getting key for resource '${sourceName}'...`);
-    let rsp = s3.getObject(s3params);
+    let rsp = await s3.getObject(s3params).promise();
     key_id = rsp.Body.toString('utf-8');
     if (DEBUG) console.debug(`Found existing key ${key_id}`);
   } catch (e) {
@@ -277,9 +277,11 @@ async function getEncryptionKey(sourceName) {
       ]
     };
     let rsp = await kms.createKey(p1).promise();
+    if (DEBUG) console.debug(`createKey: ${JSON.stringify(rsp)}`);
     key_id = rsp.KeyMetadata.KeyId;
     s3params.Body = Buffer.from(key_id, "utf-8");
-    s3.putObject(s3params);
+    rsp = await s3.putObject(s3params).promise();
+    if (DEBUG) console.debug(`putObject: ${JSON.stringify(rsp)}`);
   }
   return key_id
 }
