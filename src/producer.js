@@ -7,6 +7,7 @@ const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
 const sts = new AWS.STS({apiVersion: '2011-06-15'});
+const key_arn = process.env.TRANSIT_KEY_ARN;
 const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
@@ -43,7 +44,6 @@ exports.handler = async (incoming, context) => {
         }
         case "DRACO Event":
           evt = JSON.parse(record.Sns.Message);
-          evt.SourceId = evt.SourceArn.split(':')[6];
           break;
         default:
           throw "Unhandled subject: " + record.Sns.Subject;
@@ -104,14 +104,14 @@ exports.handler = async (incoming, context) => {
       }
 
       case 'snapshot-copy-initiate': { // Consumer says to copy the snapshot...
-        console.debug(`snapshot-copy-initiate: ${JSON.stringify(evt)}`);
+        if (DEBUG) console.debug(`snapshot-copy-initiate: ${JSON.stringify(evt)}`);
         switch (evt.SnapshotType) {
           case 'RDS': {
             let p0 = {
               SourceDBSnapshotIdentifier: evt.SourceId,
               TargetDBSnapshotIdentifier: evt.TargetId,
               CopyTags: true,
-              KmsKeyId: evt.TargetKmsId
+              KmsKeyId: key_arn
             };
             rsp = await rds.copyDBSnapshot(p0).promise();
             evt.TargetArn = rsp.DBSnapshot.DBSnapshotArn;
@@ -124,7 +124,7 @@ exports.handler = async (incoming, context) => {
               CopyTags: true,
             };
             if (evt.Encrypted) {
-              p0.KmsKeyId = evt.TargetKmsId;
+              p0.KmsKeyId = key_arn
             }
             rsp = await rds.copyDBClusterSnapshot(p0).promise();
             evt.TargetArn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
@@ -137,7 +137,7 @@ exports.handler = async (incoming, context) => {
               SourceRegion: evt.Region,
               SourceSnapshotId: evt.SourceId,
               Encrypted: evt.Encrypted,
-              KmsKeyId: evt.TargetKmsId,
+              KmsKeyId: key_arn
             };
             if (evt.TagList.length > 0) {
               let TagSpec = {
@@ -174,7 +174,7 @@ exports.handler = async (incoming, context) => {
       }
 
       case 'snapshot-copy-completed': { // share a previously created copy
-        console.debug(`snapshot-copy-completed: ${JSON.stringify(evt)}`);
+        if (DEBUG) console.debug(`snapshot-copy-completed: ${JSON.stringify(evt)}`);
         let p2 = {
           AttributeName: 'restore',
           ValuesToAdd: [ dr_acct ]
@@ -226,7 +226,7 @@ exports.handler = async (incoming, context) => {
       }
 
       case 'snapshot-delete-shared': { // delete the previously shared copy
-        console.debug(`snapshot-delete-shared: ${JSON.stringify(evt)}`);
+        if (DEBUG) console.debug(`snapshot-delete-shared: ${JSON.stringify(evt)}`);
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             output = await rds.deleteDBClusterSnapshot({

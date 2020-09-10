@@ -8,7 +8,7 @@ const rds = new AWS.RDS({apiVersion: '2014-10-31'});
 const s3 = new AWS.S3({apiVersion: '2006-03-01'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
-const dr_acct = process.env.DR_ACCT;
+const sts = new AWS.STS({apiVersion: '2011-06-15'});
 const tagkey = process.env.TAG_KEY;
 const tagval = process.env.TAG_VALUE;
 const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
@@ -37,16 +37,22 @@ exports.handler = async (incoming, context) => {
 
     switch (evt.EventType) {
 
-      // This message takes a normalized event representing the production snapshot
-      // and decides whether it should be copied to DR. If not then it returns a
-      // 'snapshot-no-copy' message. If it should then it determines
-      // which KMS encryption key should be used and returns the original message with
-      // the added field TargetKmsId.
+      /*
+       * This message takes a normalized event representing the production
+       * snapshot and decides whether it should be copied to DR. If not then it
+       * returns a 'snapshot-no-copy' message. If it should then it determines
+       * which KMS encryption key should be used and returns the original
+       * message with the added field TargetKmsId.
+       *
+       * This was done so that the producer would encrypt the snapshot with the
+       * DR key directly rather than use a transit key. However I could not set
+       * permissions to allow this to work, receiving error: KMSKeyNotAccessibleFault
+       * The key id now remains in the message for use later.
+       */
 
       case 'snapshot-copy-request': {
         if (await doNotCopy(evt)) break;
-        let key_id = await getEncryptionKey(evt.SourceName, evt.SourceAcct);
-
+        let key_id = await getEncryptionKey(evt.SourceName);
         evt.EventType = "snapshot-copy-initiate";
         evt.TargetKmsId = key_id;
         let p2 = {
@@ -199,8 +205,9 @@ async function doNotCopy(evt) {
  *
  * Returns the KMS Id of the key
  */
-async function getEncryptionKey(sourceName, prodAcct) {
-  let bucket = `draco-${dr_acct}-${process.env.AWS_REGION}`;
+async function getEncryptionKey(sourceName) {
+  let identity = await sts.getCallerIdentity({}).promise();
+  let bucket = `draco-${identity.Account}-${process.env.AWS_REGION}`;
   let key = `keys/${sourceName}`;
   let s3params = { Bucket: bucket, Key: key };
   let key_id;
@@ -211,6 +218,7 @@ async function getEncryptionKey(sourceName, prodAcct) {
     if (DEBUG) console.debug(`Found existing key ${key_id}`);
   } catch (e) {
     if (DEBUG) console.debug(`Key not found, allocating...`);
+
     let policy = {
       Version: '2012-10-17',
       Id: 'dr_key_policy',
@@ -220,16 +228,16 @@ async function getEncryptionKey(sourceName, prodAcct) {
             Sid: "DR Root account full access",
             Effect: "Allow",
             Principal: {
-              AWS: `arn:aws:iam::${dr_acct}:root`
+              AWS: `arn:aws:iam::${identity.Account}:root`
             },
             Action: "kms:*",
             Resource: '*'
           },
           {
-            Sid: "Allow Producer to encrypt with the key",
+            Sid: "Allow this Lambda to encrypt with the key",
             Effect: "Allow",
             Principal: {
-              AWS: `arn:aws:iam::${prodAcct}:role/DracoProducer-${process.env.AWS_REGION}`
+              AWS: identity.Arn
             },
             Action: [
               'kms:Encrypt',
@@ -240,10 +248,10 @@ async function getEncryptionKey(sourceName, prodAcct) {
             Resource: '*'
           },
           {
-            Sid: "Allow Producer to use this key with RDS and EC2",
+            Sid: "Allow this Lambda to use this key with RDS and EC2",
             Effect: "Allow",
             Principal: {
-              AWS: `arn:aws:iam::${prodAcct}:role/DracoProducer-${process.env.AWS_REGION}`
+              AWS: identity.Arn
             },
             Action: [
               "kms:CreateGrant",
@@ -307,6 +315,7 @@ async function lifeCycle(snapshot_type) {
   let rsp = {};
   let snapshots = {};
   let sources = {};
+  let identity = await sts.getCallerIdentity({}).promise();
 
   const start = Date.now();
 
@@ -327,7 +336,7 @@ async function lifeCycle(snapshot_type) {
         snapshots = rsp.DBSnapshots;
         break;
       case 'EBS': // Request all the snapshots owned by the DR account (no pagination)
-        params.OwnerIds = [ dr_acct ];
+        params.OwnerIds = [ identity.Account ];
         rsp = await ec2.describeSnapshots(params).promise();
         snapshots = rsp.Snapshots;
         break;

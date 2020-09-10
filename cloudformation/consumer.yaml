@@ -25,10 +25,6 @@ Parameters:
     Description: The account that shares the snapshot copies to be DRd
     Default: 111111111111
     Type: String
-  TargetAcct:
-    Default: 222222222222
-    Description: The account that saves the DR Snapshots
-    Type: String
   DrTagKey:
     Description: The tag key that identifies snapshot transit copies made for DR
     Default: DR
@@ -238,7 +234,6 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub DracoConsumer-${AWS::Region}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -304,6 +299,9 @@ Resources:
               - kms:DescribeKey
               - kms:Encrypt
               - kms:GenerateDataKey*
+              - kms:ListGrants
+              - kms:ReEncrypt*
+              - kms:RevokeGrants
               Resource: '*'
         - PolicyName: SaveKeys
           PolicyDocument:
@@ -382,8 +380,7 @@ Resources:
       Description: Code that copies the shared snapshot for DR 
       Environment:
         Variables:
-          DR_ACCT: !Ref TargetAcct
-          KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
+          TRANSIT_KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
           PRODUCER_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${SourceAcct}:DracoProducer"
           STATE_MACHINE_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
           TAG_KEY: !Ref DrTagKey

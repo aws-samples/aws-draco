@@ -128,7 +128,7 @@ task :bucket_warning do
     bucket = "draco-#{ENV['DR_ACCT']}-#{ENV['AWS_REGION']}"
     print "\nIs the Lambda code updated in S3 Bucket '#{bucket}'? (C to Continue): "
     s = STDIN.getc
-    exit 2 unless s =~ /^C/i
+    exit 2 unless s =~ /^(C|Y)/i
 end
 
 # Upload the given file to the S3 bucket and key if it has changed
@@ -208,7 +208,6 @@ namespace :create do
 		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
 		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
 		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
-		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
 		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
 	    ]
@@ -247,7 +246,6 @@ namespace :update do
 		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
 		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
 		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
-		{ parameter_key: "TargetAcct", parameter_value: ENV['DR_ACCT'] },
 		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
 		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
 	    ]
