@@ -126,7 +126,7 @@ end
 
 task :bucket_warning do
     bucket = "draco-#{ENV['DR_ACCT']}-#{ENV['AWS_REGION']}"
-    print "\nIs the Lambda code updated in S3 Bucket '#{bucket}'? (C to Continue): "
+    print "\nIs the Lambda code updated in S3 Bucket '#{bucket}'? (Enter Y/C to Continue): "
     s = STDIN.getc
     exit 2 unless s =~ /^(C|Y)/i
 end
