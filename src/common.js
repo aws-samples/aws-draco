@@ -28,13 +28,13 @@ exports.getSnapshotKmsId = async (snapshot_type, service, snap_id) => {
       params.Filters = [ { Name: "db-cluster-snapshot-id", Values: [ snap_id ] } ];
       rsp = await service.describeDBClusterSnapshots(params).promise();
       snapshots = rsp.DBClusterSnapshots;
-      encrypted = snapshots[0].Encrypted;
+      encrypted = snapshots[0].StorageEncrypted;
       break;
     case 'RDS':
       params.Filters = [ { Name: "db-snapshot-id", Values: [ snap_id ] } ];
       rsp = await service.describeDBSnapshots(params).promise();
       snapshots = rsp.DBSnapshots;
-      encrypted = snapshots[0].StorageEncrypted;
+      encrypted = snapshots[0].Encrypted;
       break;
     case 'EBS':
       params.SnapshotIds = [ snap_id ];
