@@ -147,7 +147,7 @@ Resources:
               "Resource": "${Wait4CopyLambda.Arn}",
               "Parameters": {
                 "iterator.$": "$.output.body.iterator",
-                "SourceArn.$": "$.event.SourceArn",
+                "ArnToCheck.$": "$.event.ArnToCheck",
                 "SnapshotType.$": "$.event.SnapshotType"
               },
               "ResultPath": "$.output",

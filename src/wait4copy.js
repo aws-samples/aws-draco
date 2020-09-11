@@ -18,24 +18,24 @@ exports.handler = async (incoming) => {
     switch (incoming.SnapshotType) {
       case 'RDS Cluster':
         notfound = "DBClusterSnapshotNotFound";
-        rsp = await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: incoming.SourceArn}).promise();
+        rsp = await rds.describeDBClusterSnapshots({DBClusterSnapshotIdentifier: incoming.ArnToCheck}).promise();
         info = rsp.DBClusterSnapshots[0];
         break;
       case 'RDS':
         notfound = "DBSnapshotNotFound";
-        rsp = await rds.describeDBSnapshots({DBSnapshotIdentifier: incoming.SourceArn}).promise();
+        rsp = await rds.describeDBSnapshots({DBSnapshotIdentifier: incoming.ArnToCheck}).promise();
         info = rsp.DBSnapshots[0];
         break;
       case 'EBS':
         notfound = "SnapshotNotFound";
-        rsp = await ec2.describeSnapshots({SnapshotIds: [ incoming.SourceArn.split(':snapshot/')[1] ] }).promise();
+        rsp = await ec2.describeSnapshots({SnapshotIds: [ incoming.ArnToCheck.split(':snapshot/')[1] ] }).promise();
         info = rsp.Snapshots[0];
         info.Status = (info.State == "completed") ? "available" : info.Progress;
         break;
       default:
         throw `Invalid Snapshot Type '${incoming.SnapshotType}'`;
     }
-    console.log(`${info.Status}: ${incoming.SourceArn}`);
+    console.log(`${info.Status}: ${incoming.ArnToCheck}`);
     if (process.env.DEBUG) console.debug("Info: "+JSON.stringify(info));
     var status = 200;
     var output = {

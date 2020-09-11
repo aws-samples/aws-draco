@@ -58,7 +58,8 @@ exports.handler = async (incoming, context) => {
         console.log(`Published: ${JSON.stringify(evt)}`);
         break;
       }
-      case 'snapshot-copy-shared': { // copy it
+      case 'snapshot-copy-shared': { // Target -> DR Copy
+        let drcopy_id, drcopy_arn;
         let params = { };
         let enc;
         if (evt.Encrypted) {
@@ -68,75 +69,66 @@ exports.handler = async (incoming, context) => {
           enc = "Plaintext";
         }
         try {
-          console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${evt.SourceArn} ...`);
+          console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${evt.TargetArn} ...`);
           switch (evt.SnapshotType) {
             case 'RDS Cluster':
             case 'RDS':
               params.CopyTags = false;
-              params.Tags  = taglist;
-              target_id = evt.SourceArn.split(':')[6].slice(0,-3); // remove '-dr'
+              params.Tags  = evt.TagList;
+              drcopy_id = evt.SourceArn.split(':')[6]; // copy to original name
               if (evt.SnapshotType == 'RDS') {
-                params.SourceDBSnapshotIdentifier = evt.SourceArn;
-                params.TargetDBSnapshotIdentifier = target_id;
+                params.SourceDBSnapshotIdentifier = evt.TargetArn;
+                params.TargetDBSnapshotIdentifier = drcopy_id;
                 output = await rds.copyDBSnapshot(params).promise();
-                target_arn = output.DBSnapshot.DBSnapshotArn;
+                drcopy_arn = output.DBSnapshot.DBSnapshotArn;
               }
               else {
-                params.SourceDBClusterSnapshotIdentifier = evt.SourceArn;
-                params.TargetDBClusterSnapshotIdentifier = target_id;
+                params.SourceDBClusterSnapshotIdentifier = evt.TargetArn;
+                params.TargetDBClusterSnapshotIdentifier = drcopy_id;
                 output = await rds.copyDBClusterSnapshot(params).promise();
-                target_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
+                drcopy_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
               }
               break;
             case 'EBS':
-              params.SourceSnapshotId = evt.SourceArn.split(':snapshot/')[1];
+              params.SourceSnapshotId = evt.TargetArn.split(':snapshot/')[1];
               params.Description  = `Draco snapshot of ${evt.SourceName}`;
-              params.SourceRegion = evt.SourceArn.split(':')[4];
+              params.SourceRegion = evt.TargetArn.split(':')[4];
               params.DestinationRegion = params.SourceRegion;
               params.Encrypted = evt.Encrypted;
-              if (taglist.length > 0) {
+              if (evt.TagList.length > 0) {
                 let TagSpec = {
                   ResourceType: "snapshot",
-                  Tags: taglist
+                  Tags: evt.TagList
                 };
                 params.TagSpecifications = [TagSpec];
               }
               output = await ec2.copySnapshot(params).promise();
-              target_id = output.SnapshotId;
-              target_arn = `arn:aws:ec2::${params.DestinationRegion}:snapshot/${target_id}`;
+              drcopy_id = output.SnapshotId;
+              drcopy_arn = `arn:aws:ec2::${params.DestinationRegion}:snapshot/${drcopy_id}`;
               break;
             default:
               throw "Invalid Snapshot Type"+evt.SnapshotType;
           }
-          console.log(`Copied to ${target_id}`);
-          let sfinput = {
-            "event": {
-              "EventType": "snapshot-copy-completed",
-              "SnapshotType": evt.SnapshotType,
-              "Encrypted": evt.Encrypted,
-              "SourceArn": target_arn,
-              "TargetArn": evt.SourceArn,
-              "TagList": taglist
-            }
-          };
+          console.log(`Copied to ${drcopy_id}`);
+          evt.EventType = "snapshot-copy-completed";
+          evt.ArnToCheck = drcopy_arn;
           let sfparams = {
             stateMachineArn: state_machine_arn,
             name: context.awsRequestId,
-            input: JSON.stringify(sfinput),
+            input: JSON.stringify(evt),
           };
           output = await sf.startExecution(sfparams).promise();
-          console.log(`Starting wait4copy: ${JSON.stringify(sfinput)}`);
+          console.log(`Starting wait4copy: ${JSON.stringify(evt)}`);
           } catch (e) {
             evt.Error = `Copy failed (${e.name}: ${e.message})`;
-            evt.TargetArn = evt.SourceArn;
-            console.error(`${evt.Error}, removing source ${evt.TargetArn} ...`);
-            await deleteSourceSnapshot(evt);
+            console.error(`${evt.Error}, removing transit snapshot ${evt.TargetArn} ...`);
+            await deleteTransitSnapshot(evt);
           }
           break;
       }
       // Tell the owning account to delete
       case 'snapshot-copy-completed': {
-        await deleteSourceSnapshot(evt);
+        await deleteTransitSnapshot(evt);
         try {
           await lifeCycle(evt.SnapshotType);
         } catch (e) {
@@ -277,11 +269,9 @@ async function getEncryptionKey(sourceName, taglist) {
 }
 
 /*
- * Ask the producer to delete the snapshot
- * Wait4Copy always uses SourceArn for the snapshot being created,
- * and the one being copied from is the target_arn
+ * Ask the producer to delete the transit snapshot
  */
-async function deleteSourceSnapshot(evt) {
+async function deleteTransitSnapshot(evt) {
   evt.EventType = "snapshot-delete-shared";
   let p2 = {
     TopicArn: producer_topic_arn,

@@ -156,6 +156,7 @@ exports.handler = async (incoming, context) => {
           }
         }
         evt.EventType = "snapshot-copy-completed";
+        evt.ArnToCheck = evt.SourceArn;
         let p1 = {
           stateMachineArn: sm_copy_arn,
           name: context.awsRequestId,
