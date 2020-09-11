@@ -63,6 +63,9 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0168':
         break;
 
+      /*
+       * Cannot copy tags on shared (or public) RDS snapshots or on EBS so store them in event
+       */
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
       case 'RDS-EVENT-0042': // Manual Snapshot Created
         evt.SnapshotType = 'RDS';
@@ -154,19 +157,11 @@ exports.handler = async (incoming, context) => {
         }
         console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TargetId}`);
 
-        let sfinput = {
-          "event": {
-            "EventType": "snapshot-copy-completed",
-            "SnapshotType": evt.SnapshotType,
-            "SourceArn": evt.TargetArn,
-            "SourceName": evt.SourceName,
-            "Encrypted": evt.Encrypted
-          }
-        };
+        evt.EventType = "snapshot-copy-completed";
         let p1 = {
           stateMachineArn: sm_copy_arn,
           name: context.awsRequestId,
-          input: JSON.stringify(sfinput),
+          input: JSON.stringify({ "event": evt }),
         };
         output = await sf.startExecution(p1).promise();
         console.log(`Started wait4copy: ${JSON.stringify(sfinput)}`);
@@ -179,19 +174,14 @@ exports.handler = async (incoming, context) => {
           AttributeName: 'restore',
           ValuesToAdd: [ dr_acct ]
         };
-        let taglist = [];
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             p2.DBClusterSnapshotIdentifier = evt.SourceId;
             await rds.modifyDBClusterSnapshotAttribute(p2).promise();
-            rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
-            taglist = rsp.TagList;
             break;
           case 'RDS':
             p2.DBSnapshotIdentifier = evt.SourceId;
             await rds.modifyDBSnapshotAttribute(p2).promise();
-            rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
-            taglist = rsp.TagList;
             break;
           case 'EBS':
             p2 = {
@@ -201,24 +191,16 @@ exports.handler = async (incoming, context) => {
               UserIds: [ dr_acct ]
             };
             await ec2.modifySnapshotAttribute(p2).promise();
-            taglist = await common.getEC2SnapshotTags(ec2, p2.SnapshotId);
             break;
           default:
             throw `Invalid Snapshot Type: ${evt.SnapshotType}`;
         }
         console.log(`Shared ${evt.SourceArn} with ${dr_acct}`);
-        var snsevent = {
-          "EventType": "snapshot-copy-shared",
-          "SourceArn": evt.SourceArn,
-          "SnapshotType": evt.SnapshotType,
-          "Encrypted": evt.Encrypted,
-          "SourceName": evt.SourceName,
-          "TagList": taglist
-        };
+        evt.EventType = "snapshot-copy-shared";
         let p3 = {
           TopicArn: dr_topic_arn,
           Subject: "DRACO Event",
-          Message: JSON.stringify(snsevent)
+          Message: JSON.stringify(evt)
         };
         output = await sns.publish(p3).promise();
         console.log(`Published: ${JSON.stringify(snsevent)}`);

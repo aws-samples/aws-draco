@@ -25,14 +25,6 @@ Parameters:
     Description: The account that shares the snapshot copies to be DRd
     Default: 111111111111
     Type: String
-  DrTagKey:
-    Description: The tag key that identifies snapshot transit copies made for DR
-    Default: DR
-    Type: String
-  DrTagValue:
-    Description: The tag value that identifies snapshot transit copies made for DR
-    Default: DRSnapshotCopy
-    Type: String
 
 Resources:
 
@@ -383,8 +375,6 @@ Resources:
           TRANSIT_KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
           PRODUCER_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${SourceAcct}:DracoProducer"
           STATE_MACHINE_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
-          TAG_KEY: !Ref DrTagKey
-          TAG_VALUE: !Ref DrTagValue
           DRY_RUN: true
       Handler: consumer.handler
       Runtime: nodejs12.x

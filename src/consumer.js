@@ -9,8 +9,6 @@ const s3 = new AWS.S3({apiVersion: '2006-03-01'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
 const sts = new AWS.STS({apiVersion: '2011-06-15'});
-const tagkey = process.env.TAG_KEY;
-const tagval = process.env.TAG_VALUE;
 const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
@@ -30,10 +28,6 @@ exports.handler = async (incoming, context) => {
     let evt = JSON.parse(record.Sns.Message);
     if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
 
-    // cannot copy tags on shared (or public) RDS snapshots or on EBS so use ones passed in message
-    let taglist = evt.TagList || [];
-    taglist.push({ Key: tagkey, Value: tagval });
-    let target_arn, target_id;
 
     switch (evt.EventType) {
 
@@ -52,7 +46,7 @@ exports.handler = async (incoming, context) => {
 
       case 'snapshot-copy-request': {
         if (await doNotCopy(evt)) break;
-        let key_id = await getEncryptionKey(evt.SourceName);
+        let key_id = await getEncryptionKey(evt.SourceName, evt.TagList);
         evt.EventType = "snapshot-copy-initiate";
         evt.TargetKmsId = key_id;
         let p2 = {
@@ -205,7 +199,7 @@ async function doNotCopy(evt) {
  *
  * Returns the KMS Id of the key
  */
-async function getEncryptionKey(sourceName) {
+async function getEncryptionKey(sourceName, taglist) {
   let identity = await sts.getCallerIdentity({}).promise();
   let bucket = `draco-${identity.Account}-${process.env.AWS_REGION}`;
   let key = `keys/${sourceName}`;
@@ -265,16 +259,13 @@ async function getEncryptionKey(sourceName) {
         ]
     }
     if (DEBUG) console.debug(`Key Policy: ${JSON.stringify(policy)}`);
+    let kmstags = taglist.filter(t => !t.Key.startsWith('Draco_Lifecycle')).map(e => ({ TagKey: e.Key, TagValue: e.Value } ))
+
     let p1 = {
       Policy: JSON.stringify(policy),
       Description: `DRACO key for ${sourceName}`,
       BypassPolicyLockoutSafetyCheck: true,
-      Tags: [
-        {
-          TagKey: tagkey,
-          TagValue: tagval
-        }
-      ]
+      Tags: kmstags
     };
     let rsp = await kms.createKey(p1).promise();
     if (DEBUG) console.debug(`createKey: ${JSON.stringify(rsp)}`);
@@ -292,16 +283,11 @@ async function getEncryptionKey(sourceName) {
  * and the one being copied from is the target_arn
  */
 async function deleteSourceSnapshot(evt) {
-  let snsevent = {
-    "EventType": "snapshot-delete-shared",
-    "SnapshotType": evt.SnapshotType,
-    "SourceArn": evt.TargetArn,
-    "Error": evt.Error
-  };
+  evt.EventType = "snapshot-delete-shared";
   let p2 = {
     TopicArn: producer_topic_arn,
     Subject: "DRACO Event",
-    Message: JSON.stringify(snsevent)
+    Message: JSON.stringify(evt)
   };
   let output = await sns.publish(p2).promise();
   console.info(`Published: ${JSON.stringify(snsevent)}`);
