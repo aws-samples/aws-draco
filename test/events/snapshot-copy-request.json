@@ -1,0 +1,19 @@
+{
+  "Records": [
+    {
+      "EventSource": "aws:sns",
+      "EventVersion": "1.0",
+      "EventSubscriptionArn": "arn:aws:sns:us-east-1:341369230415:dr_snapshot_handling:3862699a-6157-486f-8e26-b274a5b41f47",
+      "Sns": {
+        "Type": "Notification",
+        "MessageId": "1f70138c-aa9f-56a9-adb2-454c0d134283",
+        "TopicArn": "arn:aws:sns:us-east-1:341369230415:dr_snapshot_handling",
+        "Subject": "DRACO Event",
+        "Message": "{ \"EventType\": \"snapshot-copy-request\", \"SourceId\": \"mksqlserverten\", \"ArnPrefix\": \"arn:aws:rds:eu-west-1:341369230415\", \"SnapshotType\": \"RDS\", \"Encrypted\": false, \"SourceName\": \"mksqlserverten\", \"TargetId\": \"mksqlserverten-dr\", \"SourceArn\": \"arn:aws:rds:eu-west-1:341369230415:snapshot:mksqlserverten\", \"TagList\": [ { \"Key\": \"Bill\", \"Value\": \"Bailey\"}, { \"Key\": \"Draco_Lifecycle\", \"Value\": \"Test\" } ], \"SourceAcct\": \"341369230415\" }",
+        "Timestamp": "2020-02-14T13:49:00.373Z",
+        "SignatureVersion": "1",
+        "MessageAttributes": {}
+      }
+    }
+  ]
+}
