@@ -155,8 +155,10 @@ exports.handler = async (incoming, context) => {
             break;
           }
         }
+        console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TargetId}`);
+
         evt.EventType = "snapshot-copy-completed";
-        evt.ArnToCheck = evt.SourceArn;
+        evt.ArnToCheck = evt.TargetArn;
         let p1 = {
           stateMachineArn: sm_copy_arn,
           name: context.awsRequestId,
@@ -164,7 +166,6 @@ exports.handler = async (incoming, context) => {
         };
         output = await sf.startExecution(p1).promise();
         if (DEBUG) console.debug(`Started wait4copy: ${JSON.stringify(output)}`);
-        console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TargetId}`);
         break;
       }
 
@@ -172,18 +173,18 @@ exports.handler = async (incoming, context) => {
         let p2 = { AttributeName: 'restore', ValuesToAdd: [ dr_acct ] };
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
-            p2.DBClusterSnapshotIdentifier = evt.SourceId;
+            p2.DBClusterSnapshotIdentifier = evt.TargetId;
             await rds.modifyDBClusterSnapshotAttribute(p2).promise();
             break;
           case 'RDS':
-            p2.DBSnapshotIdentifier = evt.SourceId;
+            p2.DBSnapshotIdentifier = evt.TargetId;
             await rds.modifyDBSnapshotAttribute(p2).promise();
             break;
           case 'EBS':
             p2 = {
               Attribute: 'createVolumePermission',
               OperationType: 'add',
-              SnapshotId: evt.SourceArn.split(':snapshot/')[1],
+              SnapshotId: evt.TargetArn.split(':snapshot/')[1],
               UserIds: [ dr_acct ]
             };
             await ec2.modifySnapshotAttribute(p2).promise();
@@ -199,7 +200,7 @@ exports.handler = async (incoming, context) => {
         };
         output = await sns.publish(p3).promise();
         if (DEBUG) console.log(`Published: ${JSON.stringify(output)}`);
-        console.log(`Shared ${evt.SourceArn} with ${dr_acct}`);
+        console.log(`Shared ${evt.TargetArn} with ${dr_acct}`);
         break;
       }
 
@@ -207,24 +208,24 @@ exports.handler = async (incoming, context) => {
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             output = await rds.deleteDBClusterSnapshot({
-              DBClusterSnapshotIdentifier: evt.SourceArn.split(':')[6]
+              DBClusterSnapshotIdentifier: evt.TargetArn.split(':')[6]
             }).promise();
             break;
           case 'RDS':
             output = await rds.deleteDBSnapshot({
-              DBSnapshotIdentifier: evt.SourceArn.split(':')[6]
+              DBSnapshotIdentifier: evt.TargetArn.split(':')[6]
             }).promise();
             break;
           case 'EBS':
             output = await ec2.deleteSnapshot({
-              SnapshotId: evt.SourceArn.split(':snapshot/')[1]
+              SnapshotId: evt.TargetArn.split(':snapshot/')[1]
             }).promise();
             break;
           default:
             throw "Invalid Snapshot Type"+evt.SnapshotType;
         }
         if (evt.Error) console.error(`In DR account ${dr_acct}: ${evt.Error}`);
-        console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.SourceArn}`);
+        console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.TargetArn}`);
         break;
       }
 
