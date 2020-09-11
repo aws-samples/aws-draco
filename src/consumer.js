@@ -20,15 +20,14 @@ exports.handler = async (incoming, context) => {
   var status = 200;
 
   try {
-    if (DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
     let evt = JSON.parse(record.Sns.Message);
-    if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
 
-
+    if (DEBUG) console.debug(`DRACO Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
 
       /*
@@ -290,8 +289,8 @@ async function deleteSourceSnapshot(evt) {
     Message: JSON.stringify(evt)
   };
   let output = await sns.publish(p2).promise();
-  console.info(`Published: ${JSON.stringify(snsevent)}`);
   if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
+  console.info(`Published: ${JSON.stringify(evt)}`);
 }
 
 /*

@@ -21,7 +21,7 @@ exports.handler = async (incoming, context) => {
   var rsp = {};
 
   try {
-    if (DEBUG) console.debug(`Incoming Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
     let evt = {};
     if ("Records" in incoming) {
       let record = incoming.Records[0];
@@ -48,15 +48,16 @@ exports.handler = async (incoming, context) => {
         default:
           throw "Unhandled subject: " + record.Sns.Subject;
       }
-    } else {
+    } else { /* the ec2 event */
       if(!("version" in incoming) || incoming.version != "0") throw 'Unrecognized input format!';
       evt = incoming;
       evt.EventType = incoming["source"] + "." + incoming.detail["event"];
       evt.SourceId = incoming.detail.snapshot_id;
     }
     // 'incoming' is now normalized into 'evt'
-    if (DEBUG) console.debug(`Normalized Event: ${JSON.stringify(evt)}`);
+    if (DEBUG) console.debug(`DRACO Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
+      // Ignore the 'creating' events...
       case 'RDS-EVENT-0040':
       case 'RDS-EVENT-0074':
       case 'RDS-EVENT-0090':
@@ -106,8 +107,7 @@ exports.handler = async (incoming, context) => {
         break;
       }
 
-      case 'snapshot-copy-initiate': { // Consumer says to copy the snapshot...
-        if (DEBUG) console.debug(`snapshot-copy-initiate: ${JSON.stringify(evt)}`);
+      case 'snapshot-copy-initiate': { // Source -> Target
         switch (evt.SnapshotType) {
           case 'RDS': {
             let p0 = {
@@ -155,8 +155,6 @@ exports.handler = async (incoming, context) => {
             break;
           }
         }
-        console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TargetId}`);
-
         evt.EventType = "snapshot-copy-completed";
         let p1 = {
           stateMachineArn: sm_copy_arn,
@@ -164,16 +162,13 @@ exports.handler = async (incoming, context) => {
           input: JSON.stringify({ "event": evt }),
         };
         output = await sf.startExecution(p1).promise();
-        console.log(`Started wait4copy: ${JSON.stringify(sfinput)}`);
+        if (DEBUG) console.debug(`Started wait4copy: ${JSON.stringify(output)}`);
+        console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TargetId}`);
         break;
       }
 
-      case 'snapshot-copy-completed': { // share a previously created copy
-        if (DEBUG) console.debug(`snapshot-copy-completed: ${JSON.stringify(evt)}`);
-        let p2 = {
-          AttributeName: 'restore',
-          ValuesToAdd: [ dr_acct ]
-        };
+      case 'snapshot-copy-completed': { // share Target
+        let p2 = { AttributeName: 'restore', ValuesToAdd: [ dr_acct ] };
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             p2.DBClusterSnapshotIdentifier = evt.SourceId;
@@ -195,7 +190,6 @@ exports.handler = async (incoming, context) => {
           default:
             throw `Invalid Snapshot Type: ${evt.SnapshotType}`;
         }
-        console.log(`Shared ${evt.SourceArn} with ${dr_acct}`);
         evt.EventType = "snapshot-copy-shared";
         let p3 = {
           TopicArn: dr_topic_arn,
@@ -203,12 +197,12 @@ exports.handler = async (incoming, context) => {
           Message: JSON.stringify(evt)
         };
         output = await sns.publish(p3).promise();
-        console.log(`Published: ${JSON.stringify(snsevent)}`);
+        if (DEBUG) console.log(`Published: ${JSON.stringify(output)}`);
+        console.log(`Shared ${evt.SourceArn} with ${dr_acct}`);
         break;
       }
 
       case 'snapshot-delete-shared': { // delete the previously shared copy
-        if (DEBUG) console.debug(`snapshot-delete-shared: ${JSON.stringify(evt)}`);
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             output = await rds.deleteDBClusterSnapshot({
@@ -239,7 +233,7 @@ exports.handler = async (incoming, context) => {
 
       default:
         output = 'Unhandled event: ' + evt.EventType;
-        console.log(`Unhandled Event: ${JSON.stringify(evt)}`);
+        console.warn(`Unhandled Event: ${JSON.stringify(evt)}`);
         break;
     }
     status = 200;
