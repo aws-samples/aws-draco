@@ -124,7 +124,7 @@ Resources:
       RoleArn: !GetAtt Wait4CopySMRole.Arn
       DefinitionString: !Sub |
         {
-          "Comment": "Wait for a DB Snapshot to become available and fire an SNS snapshot-copy-completed event",
+          "Comment": "Wait for a Snapshot to become available and fire an SNS snapshot-copy-completed event",
           "StartAt": "Configure",
           "States": {
             "Configure": {
