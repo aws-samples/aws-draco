@@ -109,16 +109,16 @@ exports.handler = async (incoming, context) => {
             default:
               throw "Invalid Snapshot Type"+evt.SnapshotType;
           }
-          console.log(`Copied to ${drcopy_id}`);
+          console.log(`Copy started from ${evt.TargetArn} to ${drcopy_id}`);
           evt.EventType = "snapshot-copy-completed";
           evt.ArnToCheck = drcopy_arn;
           let sfparams = {
             stateMachineArn: state_machine_arn,
             name: context.awsRequestId,
-            input: JSON.stringify(evt),
+            input: JSON.stringify({ "event": evt}),
           };
           output = await sf.startExecution(sfparams).promise();
-          console.log(`Starting wait4copy: ${JSON.stringify(evt)}`);
+          if (DEBUG) console.debug(`Starting wait4copy: ${JSON.stringify(evt)}`);
           } catch (e) {
             evt.Error = `Copy failed (${e.name}: ${e.message})`;
             console.error(`${evt.Error}, removing transit snapshot ${evt.TargetArn} ...`);
