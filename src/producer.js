@@ -70,7 +70,6 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0042': // Manual Snapshot Created
         evt.SnapshotType = 'RDS';
         [ evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS", rds, evt.SourceId);
-        evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.TransitId = evt.SourceId + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
@@ -82,7 +81,6 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0075': // Manual Cluster Snapshot Created
         evt.SnapshotType = 'RDS Cluster';
         [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS Cluster", rds, evt.SourceId);
-        evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.TransitId = evt.SourceId + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
@@ -96,7 +94,6 @@ exports.handler = async (incoming, context) => {
         evt.SourceArn = evt.detail.snapshot_id;
         evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
         [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("EBS", ec2, evt.SourceId);
-        evt.Encrypted = (evt.SourceKmsId !== undefined);
         evt.TagList = await common.getEC2SnapshotTags(ec2, evt.SourceId);
         evt.Region = evt.detail.snapshot_id.split(':')[4];
         evt.EndTime = evt.detail.endTime;
@@ -123,7 +120,8 @@ exports.handler = async (incoming, context) => {
               TargetDBClusterSnapshotIdentifier: evt.TransitId,
               CopyTags: true,
             };
-            if (evt.Encrypted) {
+            // Aurora Clusters cannot be encrypted if plaintext
+            if (evt.SourceKmsId !== undefined) {
               p0.KmsKeyId = transit_key_arn
             }
             rsp = await rds.copyDBClusterSnapshot(p0).promise();
@@ -136,7 +134,7 @@ exports.handler = async (incoming, context) => {
               DestinationRegion: evt.Region,
               SourceRegion: evt.Region,
               SourceSnapshotId: evt.SourceId,
-              Encrypted: evt.Encrypted,
+              Encrypted: true,
               KmsKeyId: transit_key_arn
             };
             if (evt.TagList.length > 0) {

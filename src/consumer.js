@@ -61,40 +61,37 @@ exports.handler = async (incoming, context) => {
       case 'snapshot-copy-shared': { // Transit Copy -> DR Copy
         let drcopy_id, drcopy_arn;
         let params = { };
-        let enc;
-        if (evt.Encrypted) {
-          params.KmsKeyId = evt.TargetKmsId;
-          enc = "Encrypted";
-        } else {
-          enc = "Plaintext";
-        }
         try {
-          console.log(`Copying ${enc} ${evt.SnapshotType} Snapshot ${evt.TransitArn} ...`);
+          console.log(`Copying $${evt.SnapshotType} Snapshot ${evt.TransitArn} ...`);
           switch (evt.SnapshotType) {
-            case 'RDS Cluster':
-            case 'RDS':
+            case 'RDS Cluster': // Can only encrypt if original was
               params.CopyTags = false;
               params.Tags  = evt.TagList;
-              drcopy_id = evt.SourceId; // copy to original name
-              if (evt.SnapshotType == 'RDS') {
-                params.SourceDBSnapshotIdentifier = evt.TransitArn;
-                params.TargetDBSnapshotIdentifier = drcopy_id;
-                output = await rds.copyDBSnapshot(params).promise();
-                drcopy_arn = output.DBSnapshot.DBSnapshotArn;
-              }
-              else {
-                params.SourceDBClusterSnapshotIdentifier = evt.TransitArn;
-                params.TargetDBClusterSnapshotIdentifier = drcopy_id;
-                output = await rds.copyDBClusterSnapshot(params).promise();
-                drcopy_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
-              }
+              drcopy_id = evt.SourceId;
+              if (evt.SourceKmsId !== undefined) params.KmsKeyId = evt.TargetKmsId;
+              else console.warn (`${evt.SnapshotType} Snapshot ${evt.TransitArn} will be unencrypted!`);
+              params.SourceDBClusterSnapshotIdentifier = evt.TransitArn;
+              params.TargetDBClusterSnapshotIdentifier = drcopy_id;
+              output = await rds.copyDBClusterSnapshot(params).promise();
+              drcopy_arn = output.DBClusterSnapshot.DBClusterSnapshotArn;
               break;
-            case 'EBS':
+            case 'RDS': // Always encrypt
+              params.CopyTags = false;
+              params.Tags  = evt.TagList;
+              drcopy_id = evt.SourceId;
+              params.SourceDBSnapshotIdentifier = evt.TransitArn;
+              params.TargetDBSnapshotIdentifier = drcopy_id;
+              params.KmsKeyId = evt.TargetKmsId;
+              output = await rds.copyDBSnapshot(params).promise();
+              drcopy_arn = output.DBSnapshot.DBSnapshotArn;
+              break;
+            case 'EBS':// Always encrypt
               params.SourceSnapshotId = evt.TransitArn.split(':snapshot/')[1];
               params.Description  = `Draco snapshot of ${evt.SourceName}`;
               params.SourceRegion = evt.TransitArn.split(':')[4];
               params.DestinationRegion = params.SourceRegion;
-              params.Encrypted = evt.Encrypted;
+              params.Encrypted = true;
+              params.KmsKeyId = evt.TargetKmsId;
               if (evt.TagList.length > 0) {
                 let TagSpec = {
                   ResourceType: "snapshot",
