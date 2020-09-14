@@ -72,7 +72,7 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'RDS';
         [ evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS", rds, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
-        evt.TargetId = evt.SourceName + '-dr';
+        evt.TransitId = evt.SourceName + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
@@ -84,7 +84,7 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'RDS Cluster';
         [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS Cluster", rds, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
-        evt.TargetId = evt.SourceName + '-dr';
+        evt.TransitId = evt.SourceName + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
@@ -104,30 +104,30 @@ exports.handler = async (incoming, context) => {
         break;
       }
 
-      case 'snapshot-copy-initiate': { // Source -> Target
+      case 'snapshot-copy-initiate': { // Source -> Transit
         switch (evt.SnapshotType) {
           case 'RDS': {
             let p0 = {
               SourceDBSnapshotIdentifier: evt.SourceId,
-              TargetDBSnapshotIdentifier: evt.TargetId,
+              TargetDBSnapshotIdentifier: evt.TransitId,
               CopyTags: true,
               KmsKeyId: key_arn
             };
             rsp = await rds.copyDBSnapshot(p0).promise();
-            evt.TargetArn = rsp.DBSnapshot.DBSnapshotArn;
+            evt.TransitArn = rsp.DBSnapshot.DBSnapshotArn;
             break;
           }
           case 'RDS Cluster': {
             let p0 = {
               SourceDBClusterSnapshotIdentifier: evt.SourceId,
-              TargetDBClusterSnapshotIdentifier: evt.TargetId,
+              TargetDBClusterSnapshotIdentifier: evt.TransitId,
               CopyTags: true,
             };
             if (evt.Encrypted) {
               p0.KmsKeyId = key_arn
             }
             rsp = await rds.copyDBClusterSnapshot(p0).promise();
-            evt.TargetArn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
+            evt.TransitArn = rsp.DBClusterSnapshot.DBClusterSnapshotArn;
             break;
           }
           case 'EBS': {
@@ -147,15 +147,15 @@ exports.handler = async (incoming, context) => {
               p0.TagSpecifications = [TagSpec];
             }
             rsp = await ec2.copySnapshot(p0).promise();
-            evt.TargetId = rsp.SnapshotId;
-            evt.TargetArn = `arn:aws:ec2::${evt.Region}:snapshot/${evt.TargetId}`;
+            evt.TransitId = rsp.SnapshotId;
+            evt.TransitArn = `arn:aws:ec2::${evt.Region}:snapshot/${evt.TransitId}`;
             break;
           }
         }
-        console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TargetId}`);
+        console.log(`Initiated ${evt.SnapshotType} Snapshot Copy from ${evt.SourceId} to ${evt.TransitId}`);
 
         evt.EventType = "snapshot-copy-completed";
-        evt.ArnToCheck = evt.TargetArn;
+        evt.ArnToCheck = evt.TransitArn;
         let p1 = {
           stateMachineArn: sm_copy_arn,
           name: context.awsRequestId,
@@ -166,22 +166,22 @@ exports.handler = async (incoming, context) => {
         break;
       }
 
-      case 'snapshot-copy-completed': { // share Target
+      case 'snapshot-copy-completed': { // share Transit
         let p2 = { AttributeName: 'restore', ValuesToAdd: [ dr_acct ] };
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
-            p2.DBClusterSnapshotIdentifier = evt.TargetId;
+            p2.DBClusterSnapshotIdentifier = evt.TransitId;
             await rds.modifyDBClusterSnapshotAttribute(p2).promise();
             break;
           case 'RDS':
-            p2.DBSnapshotIdentifier = evt.TargetId;
+            p2.DBSnapshotIdentifier = evt.TransitId;
             await rds.modifyDBSnapshotAttribute(p2).promise();
             break;
           case 'EBS':
             p2 = {
               Attribute: 'createVolumePermission',
               OperationType: 'add',
-              SnapshotId: evt.TargetArn.split(':snapshot/')[1],
+              SnapshotId: evt.TransitArn.split(':snapshot/')[1],
               UserIds: [ dr_acct ]
             };
             await ec2.modifySnapshotAttribute(p2).promise();
@@ -197,7 +197,7 @@ exports.handler = async (incoming, context) => {
         };
         output = await sns.publish(p3).promise();
         if (DEBUG) console.log(`Published: ${JSON.stringify(output)}`);
-        console.log(`Shared ${evt.TargetArn} with ${dr_acct}`);
+        console.log(`Shared ${evt.TransitArn} with ${dr_acct}`);
         break;
       }
 
@@ -205,24 +205,24 @@ exports.handler = async (incoming, context) => {
         switch (evt.SnapshotType) {
           case 'RDS Cluster':
             output = await rds.deleteDBClusterSnapshot({
-              DBClusterSnapshotIdentifier: evt.TargetArn.split(':')[6]
+              DBClusterSnapshotIdentifier: evt.TransitArn.split(':')[6]
             }).promise();
             break;
           case 'RDS':
             output = await rds.deleteDBSnapshot({
-              DBSnapshotIdentifier: evt.TargetArn.split(':')[6]
+              DBSnapshotIdentifier: evt.TransitArn.split(':')[6]
             }).promise();
             break;
           case 'EBS':
             output = await ec2.deleteSnapshot({
-              SnapshotId: evt.TargetArn.split(':snapshot/')[1]
+              SnapshotId: evt.TransitArn.split(':snapshot/')[1]
             }).promise();
             break;
           default:
             throw "Invalid Snapshot Type"+evt.SnapshotType;
         }
         if (evt.Error) console.error(`In DR account ${dr_acct}: ${evt.Error}`);
-        console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.TargetArn}`);
+        console.log(`Deleting ${evt.SnapshotType} Snapshot ${evt.TransitArn}`);
         break;
       }
 
