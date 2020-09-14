@@ -345,7 +345,7 @@ Resources:
         Variables:
           DR_ACCT: !Ref TargetAcct
           DR_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${TargetAcct}:DracoConsumer"
-          KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
+          TRANSIT_KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
           SM_COPY_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
           TAG_KEY: !Ref DrTagKey
           TAG_VALUE: !Ref DrTagValue
