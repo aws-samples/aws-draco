@@ -52,7 +52,6 @@ exports.handler = async (incoming, context) => {
       if(!("version" in incoming) || incoming.version != "0") throw 'Unrecognized input format!';
       evt = incoming;
       evt.EventType = incoming["source"] + "." + incoming.detail["event"];
-      evt.SourceId = incoming.detail.snapshot_id;
     }
     // 'incoming' is now normalized into 'evt'
     if (DEBUG) console.debug(`DRACO Event: ${JSON.stringify(evt)}`);
@@ -72,7 +71,7 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'RDS';
         [ evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS", rds, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
-        evt.TransitId = evt.SourceName + '-dr';
+        evt.TransitId = evt.SourceId + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
@@ -84,7 +83,7 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'RDS Cluster';
         [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS Cluster", rds, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
-        evt.TransitId = evt.SourceName + '-dr';
+        evt.TransitId = evt.SourceId + '-dr';
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
@@ -94,9 +93,10 @@ exports.handler = async (incoming, context) => {
 
       case 'aws.ec2.createSnapshot': { // AWS backup or manual creation of a snapshot
         evt.SnapshotType = 'EBS';
+        evt.SourceArn = evt.detail.snapshot_id;
+        evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
         [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("EBS", ec2, evt.SourceId);
         evt.Encrypted = (evt.SourceKmsId !== undefined);
-        evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
         evt.TagList = await common.getEC2SnapshotTags(ec2, evt.SourceId);
         evt.Region = evt.detail.snapshot_id.split(':')[4];
         evt.EndTime = evt.detail.endTime;
