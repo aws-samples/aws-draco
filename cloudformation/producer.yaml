@@ -220,6 +220,7 @@ Resources:
                 - rds:ListTagsForResource
                 - ec2:CopySnapshot
                 - ec2:CreateTags
+                - ec2:DescribeSnapshots
                 - ec2:DescribeTags
                 - ec2:ModifySnapshotAttribute
                 - ec2:DeleteSnapshot

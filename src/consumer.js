@@ -75,7 +75,7 @@ exports.handler = async (incoming, context) => {
             case 'RDS':
               params.CopyTags = false;
               params.Tags  = evt.TagList;
-              drcopy_id = evt.SourceArn.split(':')[6]; // copy to original name
+              drcopy_id = evt.SourceId; // copy to original name
               if (evt.SnapshotType == 'RDS') {
                 params.SourceDBSnapshotIdentifier = evt.TargetArn;
                 params.TargetDBSnapshotIdentifier = drcopy_id;
