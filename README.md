@@ -64,6 +64,20 @@ allows the retention policy to be altered and automatically propagate to the DR 
 
 To see examples of the policies follow the instructions in [Testing](test/README.md)
 
+## Transit Copy
+
+There are several restrictions on copying snapshots:
+* You can't share snapshots encrypted with the default CMK.
+* ...
+Because of this an intermediate or _transit_ copy is made. The transit copy is encrypted
+with a fixed KMS key which is shared with the DR account. This allows the DR account to
+copy the encrypted transit snapshots to the DR (or _target_) copy which is encrypted with an individual
+key per sourcename. These keys are dynamically allocated when the DR copy is made and used
+for all subsequent snapshots. A list of them is kept in the Draco Regional S3 bucket under
+the prefix `keys/<sourcename>`.
+
+Note that copying unencrypted RDS cluster snapshots with encryption is not supported, so
+these will be copied across and stored as-is.
 
 ## Costs
 
@@ -74,9 +88,6 @@ Minimal. See the approximate [cost calculation](COST.md)
 Your DR account must have the snapshot limit set so that all the desired snapshots can be
 retained. The default limit is 50. If this limit is exceeded DRACO cannot function and
 will log an ERROR message to CloudWatch logs.
-
-Copying unencrypted RDS cluster snapshots with encryption is not supported, so
-these will be copied across and stored as-is.
 
 # Installation
 
@@ -251,16 +262,6 @@ snapshots due to insufficient limits (the default number of manual snapshots all
 account is 50 at time of writing). Warnings are issued when a snapshot is detected that
 does not contain a `Draco_Lifecycle` tag. To suppress these warnings set the tag to the
 value `Ignore`.
-
-### KMS Keys
-
-Unfortunately KMS Keys cannot be imported into a CloudFormation stack. If you wish to
-delete and re-create the stack, this means that the existing DR Encryption key cannot be
-automatically preserved. However the key that is created by the stack is marked for
-retention and so will not be deleted, although it won't be used for future snapshots.
-
-You can if desired, create a separate permanent KMS DR key and specify it's ARN in the the
-Consumer Lambda function's environment variable KEY_ARN
 
 ## Note on Tags
 
