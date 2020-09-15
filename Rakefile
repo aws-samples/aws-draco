@@ -207,7 +207,9 @@ namespace :create do
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
 		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
 		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
-		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] }
+		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
+		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
+		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
 	    ]
 	);
     end
@@ -243,7 +245,9 @@ namespace :update do
 		{ parameter_key: "CodeBucket", parameter_value: ENV['SOURCE_BUCKET'] },
 		{ parameter_key: "CodePrefix", parameter_value: 'draco/' },
 		{ parameter_key: "DeploymentTimestamp", parameter_value: TIMESTAMP },
-		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] }
+		{ parameter_key: "SourceAcct", parameter_value: ENV['PROD_ACCT'] },
+		{ parameter_key: "DrTagKey", parameter_value: ENV['TAG_KEY'] },
+		{ parameter_key: "DrTagValue", parameter_value: ENV['TAG_VALUE'] }
 	    ]
 	);
 	puts("Updating: #{rsp[:stack_id].split(':')[5]}")

@@ -62,6 +62,7 @@ exports.handler = async (incoming, context) => {
         let params = { };
         try {
           console.log(`Copying $${evt.SnapshotType} Snapshot ${evt.TransitArn} ...`);
+          evt.TagList[process.env.TAG_KEY] = process.env.TAG_VALUE;
           switch (evt.SnapshotType) {
             case 'RDS Cluster': // Can only encrypt if original was
               params.CopyTags = false;
