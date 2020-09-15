@@ -98,7 +98,15 @@ exports.handler = async (incoming, context) => {
         evt.SourceArn = evt.detail.snapshot_id;
         evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
         [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("EBS", ec2, evt.SourceId);
-        evt.TagList = await common.getEC2SnapshotTags(ec2, evt.SourceId);
+        /*
+        /* Get Tags from the underlying volume as they are not copied to the Snapshot
+         */
+        let p = {
+          Filters: [ { Name: "resource-id", Values: [ evt.SourceName ] } ],
+          MaxResults: 500
+        }
+        let rsp = await ec2.describeTags(p).promise();
+        evt.TagList = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
         evt.Region = evt.detail.snapshot_id.split(':')[4];
         evt.EndTime = evt.detail.endTime;
         await requestCopy(evt);

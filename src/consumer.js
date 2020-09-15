@@ -12,7 +12,6 @@ const sts = new AWS.STS({apiVersion: '2011-06-15'});
 const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
-const common = require('./common.js');
 const DEBUG = process.env.DEBUG;
 
 exports.handler = async (incoming, context) => {
@@ -369,9 +368,15 @@ async function lifeCycle(snapshot_type) {
         rsp = await rds.listTagsForResource({"ResourceName": youngest.arn}).promise();
         taglist = rsp.TagList;
         break;
-      case 'EBS':
-        taglist = await common.getEC2SnapshotTags(ec2, youngest.id);
+      case 'EBS': {
+        let p = {
+          Filters: [ { Name: "resource-id", Values: [ youngest.id ] } ],
+          MaxResults: 500
+        }
+        let rsp = await ec2.describeTags(p).promise();
+        taglist = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
         break;
+      }
     }
     let tags = {};
     for (let tag of taglist) {
