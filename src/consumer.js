@@ -67,7 +67,7 @@ exports.handler = async (incoming, context) => {
             case 'RDS Cluster': // Can only encrypt if original was
               params.CopyTags = false;
               params.Tags  = evt.TagList;
-              drcopy_id = evt.SourceId;
+              drcopy_id = evt.SourceId.replace(':','-');
               if (evt.SourceKmsId !== undefined) params.KmsKeyId = evt.TargetKmsId;
               else console.warn (`${evt.SnapshotType} Snapshot ${evt.TransitArn} will be unencrypted!`);
               params.SourceDBClusterSnapshotIdentifier = evt.TransitArn;
@@ -78,7 +78,7 @@ exports.handler = async (incoming, context) => {
             case 'RDS': // Always encrypt
               params.CopyTags = false;
               params.Tags  = evt.TagList;
-              drcopy_id = evt.SourceId;
+              drcopy_id = evt.SourceId.replace(':','-');
               params.SourceDBSnapshotIdentifier = evt.TransitArn;
               params.TargetDBSnapshotIdentifier = drcopy_id;
               params.KmsKeyId = evt.TargetKmsId;

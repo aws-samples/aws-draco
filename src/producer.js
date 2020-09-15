@@ -67,10 +67,12 @@ exports.handler = async (incoming, context) => {
        * Cannot copy tags on shared (or public) RDS snapshots or on EBS so store them in event
        */
       case 'RDS-EVENT-0091': // Automated Snapshot Created (with rds: prefix)
-      case 'RDS-EVENT-0042': // Manual Snapshot Created
+      case 'RDS-EVENT-0042': // Manual Snapshot (no rds: prefix)
         evt.SnapshotType = 'RDS';
-        [ evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS", rds, evt.SourceId);
-        evt.TransitId = evt.SourceId + '-dr';
+        rsp = await rds.describeDBSnapshots({Filters: [ { Name: "db-snapshot-id", Values: [ evt.SourceId ] } ]}).promise();
+        evt.SourceName = rsp.DBSnapshots[0].DBInstanceIdentifier;
+        evt.SourceKmsId = (rsp.DBSnapshots[0].Encrypted) ? rsp.DBSnapshots[0].KmsKeyId: undefined;
+        evt.TransitId = evt.SourceId.replace(':','-') + '-dr'; // handle the rds: prefix on Automated create
         evt.SourceArn = `${evt.ArnPrefix}:snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
@@ -78,10 +80,12 @@ exports.handler = async (incoming, context) => {
         break;
 
       case 'RDS-EVENT-0169': // Automated Cluster Snapshot Created (with rds: prefix)
-      case 'RDS-EVENT-0075': // Manual Cluster Snapshot Created
+      case 'RDS-EVENT-0075': // Manual Snapshot (no rds:prefix)
         evt.SnapshotType = 'RDS Cluster';
-        [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("RDS Cluster", rds, evt.SourceId);
-        evt.TransitId = evt.SourceId + '-dr';
+        rsp = await rds.describeDBClusterSnapshots({Filters: [ { Name: "db-cluster-snapshot-id", Values: [ evt.SourceId ] } ]}).promise();
+        evt.SourceName = rsp.DBClusterSnapshots[0].DBClusterIdentifier;
+        evt.SourceKmsId = (rsp.DBClusterSnapshots[0].StorageEncrypted) ? rsp.DBSnapshots[0].KmsKeyId: undefined;
+        evt.TransitId = evt.SourceId.replace(':','-') + '-dr'; // handle the rds: prefix on Automated create
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
         evt.TagList = rsp.TagList;
