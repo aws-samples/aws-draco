@@ -97,16 +97,24 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'EBS';
         evt.SourceArn = evt.detail.snapshot_id;
         evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
-        [evt.SourceName, evt.SourceKmsId] = await common.querySnapshotInfo("EBS", ec2, evt.SourceId);
+        [, evt.SourceKmsId] = await common.querySnapshotInfo("EBS", ec2, evt.SourceId);
+        rsp = await ec2.describeSnapshots({ SnapshotIds: [ evt.SourceId]}).promise();
+        evt.SourceName = rsp.Snapshots[0].VolumeId;
+        evt.SourceKmsId = (rsp.Snapshots[0].Encrypted) ? rsp.Snapshots[0].KmsKeyId: undefined;
+        let taglist = rsp.Snapshots[0].Tags;
         /*
-        /* Get Tags from the underlying volume as they are not copied to the Snapshot
+        /* Merge with Tags from the underlying volume as they are not copied to the Snapshot
+         * (Snapshot tags with the same key will overwrite the volume tag)
          */
         let p = {
           Filters: [ { Name: "resource-id", Values: [ evt.SourceName ] } ],
           MaxResults: 500
         }
-        let rsp = await ec2.describeTags(p).promise();
+        rsp = await ec2.describeTags(p).promise();
         evt.TagList = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
+        for (let tag of taglist) {
+          evt.TagList[tag.Key] = tag.Value;
+        }
         evt.Region = evt.detail.snapshot_id.split(':')[4];
         evt.EndTime = evt.detail.endTime;
         await requestCopy(evt);

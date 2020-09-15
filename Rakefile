@@ -156,8 +156,8 @@ task :upload => [:es_lint, :cfn_lint, :test] do
     begin
 	nUpload = 0
 	manifests = {
-	    producer: %w(producer.js common.js),
-	    consumer: %w(consumer.js common.js retention.js),
+	    producer: %w(producer.js),
+	    consumer: %w(consumer.js retention.js),
 	    wait4copy: %w(wait4copy.js)
 	}
 	manifests.each do |package, files|
