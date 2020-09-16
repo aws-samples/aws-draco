@@ -12,6 +12,7 @@ const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
 const DEBUG = Number(process.env.DEBUG) || 0;
+const common = require('./common.js');
 
 exports.handler = async (incoming, context) => {
   var output;
@@ -21,7 +22,7 @@ exports.handler = async (incoming, context) => {
   let evt = {};
 
   try {
-    if (DEBUG > 1) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG > 2) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
     if ("Records" in incoming) {
       let record = incoming.Records[0];
       if (record.EventSource != "aws:sns") throw "Unhandled source: " + record.EventSource;
@@ -102,7 +103,7 @@ exports.handler = async (incoming, context) => {
         if (DEBUG > 1) console.debug(`describeSnapshots: ${JSON.stringify(rsp)}`);
         evt.SourceName = rsp.Snapshots[0].VolumeId;
         evt.SourceKmsId = (rsp.Snapshots[0].Encrypted) ? rsp.Snapshots[0].KmsKeyId: undefined;
-        let taglist = rsp.Snapshots[0].Tags;
+        let snaptags = rsp.Snapshots[0].Tags;
         /*
         /* Merge with Tags from the underlying volume as they are not copied to the Snapshot
          * (Snapshot tags with the same key will overwrite the volume tag)
@@ -112,11 +113,9 @@ exports.handler = async (incoming, context) => {
           MaxResults: 500
         }
         rsp = await ec2.describeTags(p).promise();
-        if (DEBUG > 2) console.debug(`describeSnapshots: ${JSON.stringify(rsp)}`);
-        evt.TagList = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
-        for (let tag of taglist) {
-          evt.TagList[tag.Key] = tag.Value;
-        }
+        if (DEBUG > 1) console.debug(`describeTags: ${JSON.stringify(rsp)}`);
+        let voltags = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
+        evt.TagList = common.mergeTags(voltags, snaptags);
         evt.Region = evt.detail.snapshot_id.split(':')[4];
         evt.EndTime = evt.detail.endTime;
         await requestCopy(evt);
@@ -182,7 +181,7 @@ exports.handler = async (incoming, context) => {
           input: JSON.stringify({ "event": evt }),
         };
         output = await sf.startExecution(p1).promise();
-        if (DEBUG > 2) console.debug(`Started wait4copy: ${JSON.stringify(output)}`);
+        if (DEBUG > 0) console.debug(`Started wait4copy: ${JSON.stringify(output)}`);
         break;
       }
 
@@ -280,6 +279,6 @@ async function requestCopy(evt) {
   };
   let output = await sns.publish(p3).promise();
   console.info(`Published: ${JSON.stringify(evt)}`);
-  if (DEBUG > 1) console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG > 0) console.debug(`Publish response: ${JSON.stringify(output)}`);
 }
 // vim: sts=2 et sw=2:

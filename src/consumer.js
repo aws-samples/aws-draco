@@ -19,7 +19,7 @@ exports.handler = async (incoming, context) => {
   var status = 200;
 
   try {
-    if (DEBUG > 1) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG > 2) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
@@ -115,7 +115,7 @@ exports.handler = async (incoming, context) => {
             input: JSON.stringify({ "event": evt}),
           };
           output = await sf.startExecution(sfparams).promise();
-          if (DEBUG > 1) console.debug(`Starting wait4copy: ${JSON.stringify(evt)}`);
+          if (DEBUG > 0) console.debug(`Starting wait4copy: ${JSON.stringify(evt)}`);
           } catch (e) {
             evt.Error = `Copy failed (${e.name}: ${e.message})`;
             console.error(`${evt.Error}, removing transit snapshot ${evt.TransitArn} ...`);
@@ -171,7 +171,8 @@ async function doNotCopy(evt) {
     };
     let output = await sns.publish(p2).promise();
     console.warn(`Not Copying ${evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
-    if (DEBUG > 0) console.debug(`Publish response: ${JSON.stringify(output)}`);
+    if (DEBUG > 1) console.debug(`Publish response: ${JSON.stringify(output)}`);
+    if (DEBUG > 0) console.debug(`Published: ${JSON.stringify(evt)}`);
   }
   return !copy;
 }
@@ -194,12 +195,12 @@ async function getEncryptionKey(sourceName, taglist) {
   let s3params = { Bucket: bucket, Key: key };
   let key_id;
   try {
-    if (DEBUG > 1) console.debug(`Getting key for resource '${sourceName}'...`);
+    if (DEBUG > 0) console.debug(`Getting key for resource '${sourceName}'...`);
     let rsp = await s3.getObject(s3params).promise();
     key_id = rsp.Body.toString('utf-8');
-    if (DEBUG > 1) console.debug(`Found existing key ${key_id}`);
+    if (DEBUG > 0) console.debug(`Found existing key ${key_id}`);
   } catch (e) {
-    if (DEBUG > 1) console.debug(`Key not found, allocating...`);
+    if (DEBUG > 0) console.debug(`Key not found, allocating...`);
 
     let policy = {
       Version: '2012-10-17',
@@ -256,12 +257,12 @@ async function getEncryptionKey(sourceName, taglist) {
       Tags: kmstags
     };
     let rsp = await kms.createKey(p1).promise();
-    if (DEBUG > 2) console.debug(`createKey: ${JSON.stringify(rsp)}`);
+    if (DEBUG > 1) console.debug(`createKey: ${JSON.stringify(rsp)}`);
     key_id = rsp.KeyMetadata.KeyId;
     s3params.Body = Buffer.from(key_id, "utf-8");
     rsp = await s3.putObject(s3params).promise();
-    if (DEBUG > 2) console.debug(`putObject: ${JSON.stringify(rsp)}`);
-    if (DEBUG > 1) console.debug(`Allocated Key: ${key_id}`);
+    if (DEBUG > 1) console.debug(`putObject: ${JSON.stringify(rsp)}`);
+    if (DEBUG > 0) console.debug(`Allocated Key: ${key_id}`);
   }
   return key_id
 }
@@ -277,7 +278,7 @@ async function deleteTransitSnapshot(evt) {
     Message: JSON.stringify(evt)
   };
   let output = await sns.publish(p2).promise();
-  if (DEBUG > 0) console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG > 1) console.debug(`Publish response: ${JSON.stringify(output)}`);
   console.info(`Published: ${JSON.stringify(evt)}`);
 }
 
