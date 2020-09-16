@@ -33,7 +33,7 @@ Author: Nick Townsend (nicktown@amazon.com)
 
 ## Usage
 
-Once installed DRACO will copy every EBS and RDS snapshot taken in the designated
+Once installed DRACO will copy every EBS Volume and RDS Database snapshot taken in the designated
 'Production' account that is tagged with `Draco_Lifecycle` across to the designated
 'Disaster Recovery' account and re-encrypt them with a key known only to the DR account
 (subject to Limitations - see below).
@@ -66,7 +66,10 @@ To see examples of the policies follow the instructions in [Testing](test/README
 
 ## Transit Copy
 
-There are several restrictions on copying snapshots:
+There are several issues with snapshots, their creation and copying:
+* EBS Volume snapshots don't inherit the tags of the underlying volume. DRACO copies the
+  tags from the original volume into the snapshot.
+* RDS Database snapshots can be set to inherit the tags of the underlying database
 * You can't share snapshots encrypted with the default CMK.
 * ...
 Because of this an intermediate or _transit_ copy is made. The transit copy is encrypted
@@ -274,6 +277,17 @@ the DR snapshot along with the Draco specific tag specified in `config.yaml`.
 The code is written in NodeJS. There is a Ruby Rakefile that simplifies the development
 process with tasks to set the environment and upload the code to an S3 bucket for
 deployment using the CloudFormation console.
+
+### Debugging
+
+Set the environment variable DEBUG manually in the Lambda functions. This is a numerical
+level:
+
+* 0 (or any other non-numeric value): No debugging
+* > 0: control flow tracing
+* > 1: API call responses
+* > 2: Full details
+
 
 ### Rake Tasks
 

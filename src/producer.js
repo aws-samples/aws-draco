@@ -11,18 +11,17 @@ const transit_key_arn = process.env.TRANSIT_KEY_ARN;
 const dr_acct = process.env.DR_ACCT;
 const dr_topic_arn = process.env.DR_TOPIC_ARN;
 const sm_copy_arn = process.env.SM_COPY_ARN;
-const common = require('./common.js');
-const DEBUG = process.env.DEBUG;
+const DEBUG = Number(process.env.DEBUG) || 0;
 
 exports.handler = async (incoming, context) => {
   var output;
   var message;
   var status = 200;
   var rsp = {};
+  let evt = {};
 
   try {
-    if (DEBUG) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
-    let evt = {};
+    if (DEBUG > 1) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
     if ("Records" in incoming) {
       let record = incoming.Records[0];
       if (record.EventSource != "aws:sns") throw "Unhandled source: " + record.EventSource;
@@ -54,7 +53,7 @@ exports.handler = async (incoming, context) => {
       evt.EventType = incoming["source"] + "." + incoming.detail["event"];
     }
     // 'incoming' is now normalized into 'evt'
-    if (DEBUG) console.debug(`DRACO Event: ${JSON.stringify(evt)}`);
+    console.log(`DRACO Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
       // Ignore the 'creating' events...
       case 'RDS-EVENT-0040':
@@ -70,6 +69,7 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0042': // Manual Snapshot (no rds: prefix)
         evt.SnapshotType = 'RDS';
         rsp = await rds.describeDBSnapshots({Filters: [ { Name: "db-snapshot-id", Values: [ evt.SourceId ] } ]}).promise();
+        if (DEBUG > 1) console.debug(`describeDBSnapshots: ${JSON.stringify(rsp)}`);
         evt.SourceName = rsp.DBSnapshots[0].DBInstanceIdentifier;
         evt.SourceKmsId = (rsp.DBSnapshots[0].Encrypted) ? rsp.DBSnapshots[0].KmsKeyId: undefined;
         evt.TransitId = evt.SourceId.replace(':','-') + '-dr'; // handle the rds: prefix on Automated create
@@ -83,8 +83,9 @@ exports.handler = async (incoming, context) => {
       case 'RDS-EVENT-0075': // Manual Snapshot (no rds:prefix)
         evt.SnapshotType = 'RDS Cluster';
         rsp = await rds.describeDBClusterSnapshots({Filters: [ { Name: "db-cluster-snapshot-id", Values: [ evt.SourceId ] } ]}).promise();
+        if (DEBUG > 1) console.debug(`describeDBClusterSnapshots: ${JSON.stringify(rsp)}`);
         evt.SourceName = rsp.DBClusterSnapshots[0].DBClusterIdentifier;
-        evt.SourceKmsId = (rsp.DBClusterSnapshots[0].StorageEncrypted) ? rsp.DBSnapshots[0].KmsKeyId: undefined;
+        evt.SourceKmsId = (rsp.DBClusterSnapshots[0].StorageEncrypted) ? rsp.DBClusterSnapshots[0].KmsKeyId: undefined;
         evt.TransitId = evt.SourceId.replace(':','-') + '-dr'; // handle the rds: prefix on Automated create
         evt.SourceArn = `${evt.ArnPrefix}:cluster-snapshot:${evt.SourceId}`;
         rsp = await rds.listTagsForResource({"ResourceName": evt.SourceArn}).promise();
@@ -97,8 +98,8 @@ exports.handler = async (incoming, context) => {
         evt.SnapshotType = 'EBS';
         evt.SourceArn = evt.detail.snapshot_id;
         evt.SourceId = evt.detail.snapshot_id.split(':snapshot/')[1];
-        [, evt.SourceKmsId] = await common.querySnapshotInfo("EBS", ec2, evt.SourceId);
         rsp = await ec2.describeSnapshots({ SnapshotIds: [ evt.SourceId]}).promise();
+        if (DEBUG > 1) console.debug(`describeSnapshots: ${JSON.stringify(rsp)}`);
         evt.SourceName = rsp.Snapshots[0].VolumeId;
         evt.SourceKmsId = (rsp.Snapshots[0].Encrypted) ? rsp.Snapshots[0].KmsKeyId: undefined;
         let taglist = rsp.Snapshots[0].Tags;
@@ -111,6 +112,7 @@ exports.handler = async (incoming, context) => {
           MaxResults: 500
         }
         rsp = await ec2.describeTags(p).promise();
+        if (DEBUG > 2) console.debug(`describeSnapshots: ${JSON.stringify(rsp)}`);
         evt.TagList = rsp.Tags.filter(t => !t.Key.startsWith('aws:')).map(e => ({ Key: e.Key, Value: e.Value } ))
         for (let tag of taglist) {
           evt.TagList[tag.Key] = tag.Value;
@@ -180,7 +182,7 @@ exports.handler = async (incoming, context) => {
           input: JSON.stringify({ "event": evt }),
         };
         output = await sf.startExecution(p1).promise();
-        if (DEBUG) console.debug(`Started wait4copy: ${JSON.stringify(output)}`);
+        if (DEBUG > 2) console.debug(`Started wait4copy: ${JSON.stringify(output)}`);
         break;
       }
 
@@ -214,7 +216,7 @@ exports.handler = async (incoming, context) => {
           Message: JSON.stringify(evt)
         };
         output = await sns.publish(p3).promise();
-        if (DEBUG) console.log(`Published: ${JSON.stringify(output)}`);
+        if (DEBUG > 0) console.debug(`Published: ${JSON.stringify(output)}`);
         console.log(`Shared ${evt.TransitArn} with ${dr_acct}`);
         break;
       }
@@ -256,7 +258,7 @@ exports.handler = async (incoming, context) => {
     status = 200;
   } catch (e) {
     console.error(e);
-    console.error(`Raw Event: ${JSON.stringify(incoming)}`);
+    console.error(`Event: ${JSON.stringify(evt)}`);
     output = e;
     status = 500;
   }
@@ -269,7 +271,7 @@ exports.handler = async (incoming, context) => {
 async function requestCopy(evt) {
   evt.EventType = "snapshot-copy-request";
   let data = await sts.getCallerIdentity({}).promise();
-  if (DEBUG) console.debug(`STS Caller Identity: ${JSON.stringify(data)}`);
+  if (DEBUG > 2) console.debug(`STS Caller Identity: ${JSON.stringify(data)}`);
   evt.SourceAcct = data.Account;
   let p3 = {
     TopicArn: dr_topic_arn,
@@ -278,6 +280,6 @@ async function requestCopy(evt) {
   };
   let output = await sns.publish(p3).promise();
   console.info(`Published: ${JSON.stringify(evt)}`);
-  if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG > 1) console.debug(`Publish response: ${JSON.stringify(output)}`);
 }
 // vim: sts=2 et sw=2:

@@ -12,21 +12,21 @@ const sts = new AWS.STS({apiVersion: '2011-06-15'});
 const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
-const DEBUG = process.env.DEBUG;
+const DEBUG = Number(process.env.DEBUG) || 0;
 
 exports.handler = async (incoming, context) => {
   var output = 'nothing';
   var status = 200;
 
   try {
-    if (DEBUG) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
+    if (DEBUG > 1) console.debug(`Raw Event: ${JSON.stringify(incoming)}`);
     if (!("Records" in incoming)) throw 'No records!';
     let record = incoming.Records[0];
     if (record.EventSource != "aws:sns") throw "Cannot handle source: " + record.EventSource;
     if (record.Sns.Subject != "DRACO Event") throw "Invalid subject: " + record.Sns.Subject;
     let evt = JSON.parse(record.Sns.Message);
 
-    if (DEBUG) console.debug(`DRACO Event: ${JSON.stringify(evt)}`);
+    console.log(`DRACO Event: ${JSON.stringify(evt)}`);
     switch (evt.EventType) {
 
       /*
@@ -53,7 +53,7 @@ exports.handler = async (incoming, context) => {
           Message: JSON.stringify(evt)
         };
         output = await sns.publish(p2).promise();
-        if (DEBUG) console.debug(`SNS Publish: ${JSON.stringify(output)}`);
+        if (DEBUG > 1) console.debug(`SNS Publish: ${JSON.stringify(output)}`);
         console.log(`Published: ${JSON.stringify(evt)}`);
         break;
       }
@@ -115,7 +115,7 @@ exports.handler = async (incoming, context) => {
             input: JSON.stringify({ "event": evt}),
           };
           output = await sf.startExecution(sfparams).promise();
-          if (DEBUG) console.debug(`Starting wait4copy: ${JSON.stringify(evt)}`);
+          if (DEBUG > 1) console.debug(`Starting wait4copy: ${JSON.stringify(evt)}`);
           } catch (e) {
             evt.Error = `Copy failed (${e.name}: ${e.message})`;
             console.error(`${evt.Error}, removing transit snapshot ${evt.TransitArn} ...`);
@@ -171,7 +171,7 @@ async function doNotCopy(evt) {
     };
     let output = await sns.publish(p2).promise();
     console.warn(`Not Copying ${evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
-    if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
+    if (DEBUG > 0) console.debug(`Publish response: ${JSON.stringify(output)}`);
   }
   return !copy;
 }
@@ -194,12 +194,12 @@ async function getEncryptionKey(sourceName, taglist) {
   let s3params = { Bucket: bucket, Key: key };
   let key_id;
   try {
-    if (DEBUG) console.debug(`Getting key for resource '${sourceName}'...`);
+    if (DEBUG > 1) console.debug(`Getting key for resource '${sourceName}'...`);
     let rsp = await s3.getObject(s3params).promise();
     key_id = rsp.Body.toString('utf-8');
-    if (DEBUG) console.debug(`Found existing key ${key_id}`);
+    if (DEBUG > 1) console.debug(`Found existing key ${key_id}`);
   } catch (e) {
-    if (DEBUG) console.debug(`Key not found, allocating...`);
+    if (DEBUG > 1) console.debug(`Key not found, allocating...`);
 
     let policy = {
       Version: '2012-10-17',
@@ -246,7 +246,7 @@ async function getEncryptionKey(sourceName, taglist) {
           }
         ]
     }
-    if (DEBUG) console.debug(`Key Policy: ${JSON.stringify(policy)}`);
+    if (DEBUG > 2) console.debug(`Key Policy: ${JSON.stringify(policy)}`);
     let kmstags = taglist.filter(t => !t.Key.startsWith('Draco_Lifecycle')).map(e => ({ TagKey: e.Key, TagValue: e.Value } ))
 
     let p1 = {
@@ -256,11 +256,12 @@ async function getEncryptionKey(sourceName, taglist) {
       Tags: kmstags
     };
     let rsp = await kms.createKey(p1).promise();
-    if (DEBUG) console.debug(`createKey: ${JSON.stringify(rsp)}`);
+    if (DEBUG > 2) console.debug(`createKey: ${JSON.stringify(rsp)}`);
     key_id = rsp.KeyMetadata.KeyId;
     s3params.Body = Buffer.from(key_id, "utf-8");
     rsp = await s3.putObject(s3params).promise();
-    if (DEBUG) console.debug(`putObject: ${JSON.stringify(rsp)}`);
+    if (DEBUG > 2) console.debug(`putObject: ${JSON.stringify(rsp)}`);
+    if (DEBUG > 1) console.debug(`Allocated Key: ${key_id}`);
   }
   return key_id
 }
@@ -276,7 +277,7 @@ async function deleteTransitSnapshot(evt) {
     Message: JSON.stringify(evt)
   };
   let output = await sns.publish(p2).promise();
-  if (DEBUG) console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG > 0) console.debug(`Publish response: ${JSON.stringify(output)}`);
   console.info(`Published: ${JSON.stringify(evt)}`);
 }
 
