@@ -176,20 +176,16 @@ function shouldCopy(evt) {
  * The Reason field of the event is set.
  */
 async function doNotCopy(evt) {
-  let copy = true;
-  if (!copy) {
-    evt.EventType = 'snapshot-no-copy'
-    let p2 = {
-      TopicArn: producer_topic_arn,
-      Subject: "DRACO Event",
-      Message: JSON.stringify(evt)
-    };
-    let output = await sns.publish(p2).promise();
-    console.warn(`Not Copying ${evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
-    if (DEBUG > 1) console.debug(`Publish response: ${JSON.stringify(output)}`);
-    if (DEBUG > 0) console.debug(`Published: ${JSON.stringify(evt)}`);
-  }
-  return !copy;
+  evt.EventType = 'snapshot-no-copy'
+  let params = {
+    TopicArn: producer_topic_arn,
+    Subject: "DRACO Event",
+    Message: JSON.stringify(evt)
+  };
+  let output = await sns.publish(params).promise();
+  console.warn(`Not Copying ${evt.SnapshotType} Snapshot ${evt.SourceId}: ${evt.Reason}`);
+  if (DEBUG > 1) console.debug(`Publish response: ${JSON.stringify(output)}`);
+  if (DEBUG > 0) console.debug(`Published: ${JSON.stringify(evt)}`);
 }
 
 /*
@@ -278,7 +274,7 @@ async function getEncryptionKey(sourceName, taglist) {
   if (DEBUG > 1) console.debug(`createAlias: ${JSON.stringify(rsp)}`);
   if (DEBUG > 0) console.debug(`created Alias ${aliasName} -> ${key_id}`);
 
-  return key_id
+  return key_id;
 }
 
 /*
@@ -291,6 +287,7 @@ async function getKeyFromAlias(aliasName) {
 
   do {
     let rsp = await kms.listAliases(params).promise();
+    if (DEBUG > 1) console.debug(`listAliases: ${JSON.stringify(rsp)}`);
     for (let alias of rsp.Aliases) {
       aliases.set(alias.AliasName, alias.TargetKeyId);
     }
@@ -298,8 +295,7 @@ async function getKeyFromAlias(aliasName) {
     else delete params.Marker;
   }
   while ('Marker' in params);
-  let key_id = aliases.has(aliasName) ? aliases.get(aliasName): undefined;
-  return key_id;
+  return aliases.get(aliasName);
 }
 
 /*

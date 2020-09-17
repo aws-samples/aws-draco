@@ -288,6 +288,7 @@ Resources:
               - kms:CreateAlias
               - kms:CreateKey
               - kms:DescribeKey
+              - kms:EnableKeyRotation
               - kms:ListAliases
               - kms:TagResource
               Resource: '*'
