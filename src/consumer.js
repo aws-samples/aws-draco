@@ -311,8 +311,9 @@ async function lifeCycle(snapshot_type) {
         rsp = await rds.describeDBSnapshots(params).promise();
         snapshots = rsp.DBSnapshots;
         break;
-      case 'EBS': // Request all the snapshots owned by the DR account (no pagination)
+      case 'EBS': // Request all the snapshots owned by the DR account with Draco_Lifecycle tags (no pagination)
         params.OwnerIds = [ identity.Account ];
+        params.Filters = [ { Name: "tag-key", Value: "Draco_Lifecycle" } ];
         rsp = await ec2.describeSnapshots(params).promise();
         snapshots = rsp.Snapshots;
         break;
@@ -341,7 +342,7 @@ async function lifeCycle(snapshot_type) {
           snapshot_date = new Date(snapshot.SnapshotCreateTime);
           break;
         case 'EBS':
-          source_id = snapshot.Description.split(':volume/')[1];
+          source_id = snapshot.Description.match(/\bvol-[0-9a-f]+\b/i)[0];
           snapshot_id = snapshot.SnapshotId;
           snapshot_date = new Date(snapshot.StartTime);
           break;
