@@ -5,7 +5,6 @@ const AWS = require('aws-sdk');
 const ec2 = new AWS.EC2({apiVersion: '2016-11-15'});
 const kms = new AWS.KMS({apiVersion: '2014-11-01'});
 const rds = new AWS.RDS({apiVersion: '2014-10-31'});
-const s3 = new AWS.S3({apiVersion: '2006-03-01'});
 const sf = new AWS.StepFunctions({apiVersion: '2016-11-23'});
 const sns = new AWS.SNS({apiVersion: '2010-03-31'});
 const sts = new AWS.STS({apiVersion: '2011-06-15'});
@@ -180,91 +179,111 @@ async function doNotCopy(evt) {
 /*
  * Retrieve the encryption key for the source.
  *
- * It uses the SourceName (the name of the Database or EBS Volume) to
- * lookup the key used to encrypt the snapshots. These keys are held
- * in the Regional Draco S3 Bucket as objects with the name
- * 'keys/{SourceName}' containing the key id. If the key doesn't exist
- * one is created.
+ * Use the SourceName (the name of the Database or EBS Volume) to lookup
+ * the alias of the key used to encrypt the snapshots. The aliases have a name
+ * 'alias/DRACO-{SourceName}'.
+ * If the key doesn't exist one is created.
  *
  * Returns the KMS Id of the key
  */
 async function getEncryptionKey(sourceName, taglist) {
   let identity = await sts.getCallerIdentity({}).promise();
-  let bucket = `draco-${identity.Account}-${process.env.AWS_REGION}`;
-  let key = `keys/${sourceName}`;
-  let s3params = { Bucket: bucket, Key: key };
-  let key_id;
-  try {
-    if (DEBUG > 0) console.debug(`Getting key for resource '${sourceName}'...`);
-    let rsp = await s3.getObject(s3params).promise();
-    key_id = rsp.Body.toString('utf-8');
+  let aliasName = `alias/DRACO-${sourceName}`;
+  if (DEBUG > 0) console.debug(`Getting key for resource '${sourceName}'...`);
+  let key_id =  await getKeyFromAlias(aliasName);
+  if (key_id !== undefined) {
     if (DEBUG > 0) console.debug(`Found existing key ${key_id}`);
-  } catch (e) {
-    if (DEBUG > 0) console.debug(`Key not found, allocating...`);
-
-    let policy = {
-      Version: '2012-10-17',
-      Id: 'dr_key_policy',
-      Statement:
-        [
-          {
-            Sid: "DR Root account full access",
-            Effect: "Allow",
-            Principal: {
-              AWS: `arn:aws:iam::${identity.Account}:root`
-            },
-            Action: "kms:*",
-            Resource: '*'
-          },
-          {
-            Sid: "Allow this Lambda to encrypt with the key",
-            Effect: "Allow",
-            Principal: {
-              AWS: identity.Arn
-            },
-            Action: [
-              'kms:Encrypt',
-              'kms:ReEncrypt*',
-              'kms:GenerateDataKey*',
-              'kms:DescribeKey'
-            ],
-            Resource: '*'
-          },
-          {
-            Sid: "Allow this Lambda to use this key with RDS and EC2",
-            Effect: "Allow",
-            Principal: {
-              AWS: identity.Arn
-            },
-            Action: [
-              "kms:CreateGrant",
-              "kms:ListGrants",
-              "kms:RevokeGrant"
-            ],
-            Resource: "*",
-            Condition: {
-              Bool: { "kms:GrantIsForAWSResource": "true"} }
-          }
-        ]
-    }
-    if (DEBUG > 2) console.debug(`Key Policy: ${JSON.stringify(policy)}`);
-    let kmstags = taglist.filter(t => !t.Key.startsWith('Draco_Lifecycle')).map(e => ({ TagKey: e.Key, TagValue: e.Value } ))
-
-    let p1 = {
-      Policy: JSON.stringify(policy),
-      Description: `DRACO key for ${sourceName}`,
-      BypassPolicyLockoutSafetyCheck: true,
-      Tags: kmstags
-    };
-    let rsp = await kms.createKey(p1).promise();
-    if (DEBUG > 1) console.debug(`createKey: ${JSON.stringify(rsp)}`);
-    key_id = rsp.KeyMetadata.KeyId;
-    s3params.Body = Buffer.from(key_id, "utf-8");
-    rsp = await s3.putObject(s3params).promise();
-    if (DEBUG > 1) console.debug(`putObject: ${JSON.stringify(rsp)}`);
-    if (DEBUG > 0) console.debug(`Allocated Key: ${key_id}`);
+    return key_id
   }
+  if (DEBUG > 0) console.debug(`Key not found, allocating...`);
+
+  let policy = {
+    Version: '2012-10-17',
+    Id: 'dr_key_policy',
+    Statement:
+      [
+        {
+          Sid: "DR Root account full access",
+          Effect: "Allow",
+          Principal: {
+            AWS: `arn:aws:iam::${identity.Account}:root`
+          },
+          Action: "kms:*",
+          Resource: '*'
+        },
+        {
+          Sid: "Allow this Lambda to encrypt with the key",
+          Effect: "Allow",
+          Principal: {
+            AWS: identity.Arn
+          },
+          Action: [
+            'kms:Encrypt',
+            'kms:ReEncrypt*',
+            'kms:GenerateDataKey*',
+            'kms:DescribeKey'
+          ],
+          Resource: '*'
+        },
+        {
+          Sid: "Allow this Lambda to use this key with RDS and EC2",
+          Effect: "Allow",
+          Principal: {
+            AWS: identity.Arn
+          },
+          Action: [
+            "kms:CreateGrant",
+            "kms:ListGrants",
+            "kms:RevokeGrant"
+          ],
+          Resource: "*",
+          Condition: {
+            Bool: { "kms:GrantIsForAWSResource": "true"} }
+        }
+      ]
+  }
+  if (DEBUG > 2) console.debug(`Key Policy: ${JSON.stringify(policy)}`);
+  let kmstags = taglist.filter(t => !t.Key.startsWith('Draco_Lifecycle')).map(e => ({ TagKey: e.Key, TagValue: e.Value } ))
+
+  let p1 = {
+    Policy: JSON.stringify(policy),
+    Description: `DRACO key for ${sourceName}`,
+    BypassPolicyLockoutSafetyCheck: true,
+    Tags: kmstags
+  };
+  let rsp = await kms.createKey(p1).promise();
+  if (DEBUG > 1) console.debug(`createKey: ${JSON.stringify(rsp)}`);
+  key_id = rsp.KeyMetadata.KeyId;
+  if (DEBUG > 0) console.debug(`created Key: ${key_id}`);
+  rsp = await kms.enableKeyRotation({ KeyId: key_id }).promise();
+  if (DEBUG > 1) console.debug(`enableKeyRotation: ${JSON.stringify(rsp)}`);
+  if (DEBUG > 0) console.debug(`enabled Key Rotation for: ${key_id}`);
+  rsp = await kms.createAlias({AliasName: aliasName, TargetKeyId: key_id}).promise();
+  if (DEBUG > 1) console.debug(`createAlias: ${JSON.stringify(rsp)}`);
+  if (DEBUG > 0) console.debug(`created Alias ${aliasName} -> ${key_id}`);
+
   return key_id
+}
+
+/*
+ * Retrieve the key for a specific alias
+ */
+async function getKeyFromAlias(aliasName) {
+
+  let params = { };
+  let aliases = new Map();
+
+  do {
+    let rsp = await kms.listAliases(params).promise();
+    for (let alias of rsp.Aliases) {
+      aliases.set(alias.AliasName, alias.TargetKeyId);
+    }
+    if (rsp.Truncated) params.Marker = rsp.NextMarker;
+    else delete params.Marker;
+  }
+  while ('Marker' in params);
+  let key_id = aliases.has(aliasName) ? aliases.get(aliasName): undefined;
+  return key_id;
 }
 
 /*

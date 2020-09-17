@@ -285,8 +285,10 @@ Resources:
             Statement:
             - Effect: Allow
               Action:
-              - kms:DescribeKey
+              - kms:CreateAlias
               - kms:CreateKey
+              - kms:DescribeKey
+              - kms:ListAliases
               - kms:TagResource
               Resource: '*'
         - PolicyName: KeyUsage
