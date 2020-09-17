@@ -197,40 +197,6 @@ Resources:
                     timer.cancel()
                     cfnresponse.send(event, context, status, responseData, physical_resource_id)
     
-  SnapshotEncryptionKey:
-    Type: AWS::KMS::Key
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      Description: Key used for encrypting DR copies
-      Enabled: true
-      EnableKeyRotation: false
-      KeyPolicy:
-        Version: '2012-10-17'
-        Id: dr_key_policy
-        Statement:
-        - Sid: Enable DR account full access
-          Effect: Allow
-          Principal:
-            AWS: !Sub ${AWS::AccountId}
-          Action: kms:*
-          Resource: '*'
-        - Sid: Lambda to copy encrypted RDS Snapshots 
-          Effect: Allow
-          Principal:
-            AWS:
-              - !GetAtt LambdaExecutionRole.Arn
-          Action:
-            - kms:Encrypt
-            - kms:Decrypt
-            - kms:ReEncrypt*
-            - kms:GenerateDataKey*
-            - kms:ListGrants
-            - kms:RevokeGrant
-            - kms:CreateGrant
-            - kms:DescribeKey
-          Resource: '*'
-          
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -383,7 +349,6 @@ Resources:
       Description: Code that copies the shared snapshot for DR 
       Environment:
         Variables:
-          TRANSIT_KEY_ARN: !GetAtt SnapshotEncryptionKey.Arn
           PRODUCER_TOPIC_ARN: !Sub "arn:aws:sns:${AWS::Region}:${SourceAcct}:DracoProducer"
           STATE_MACHINE_ARN: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wait4copy-${AWS::AccountId}"
           DRY_RUN: true
