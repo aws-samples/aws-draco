@@ -42,18 +42,25 @@ exports.handler = async (incoming, context) => {
        */
 
       case 'snapshot-copy-request': {
-        if (await doNotCopy(evt)) break;
-        let key_id = await getEncryptionKey(evt.SourceName, evt.TagList);
-        evt.EventType = "snapshot-copy-initiate";
-        evt.TargetKmsId = key_id;
-        let p2 = {
-          TopicArn: producer_topic_arn,
-          Subject: "DRACO Event",
-          Message: JSON.stringify(evt)
-        };
-        output = await sns.publish(p2).promise();
-        if (DEBUG > 1) console.debug(`SNS Publish: ${JSON.stringify(output)}`);
-        console.log(`Published: ${JSON.stringify(evt)}`);
+        try {
+          if (shouldCopy(evt)) {
+            let key_id = await getEncryptionKey(evt.SourceName, evt.TagList);
+            evt.EventType = "snapshot-copy-initiate";
+            evt.TargetKmsId = key_id;
+            let p2 = {
+              TopicArn: producer_topic_arn,
+              Subject: "DRACO Event",
+              Message: JSON.stringify(evt)
+            };
+            output = await sns.publish(p2).promise();
+            if (DEBUG > 1) console.debug(`SNS Publish: ${JSON.stringify(output)}`);
+            console.log(`Published: ${JSON.stringify(evt)}`);
+          }
+          else await doNotCopy(evt);
+        } catch (e) {
+            evt.Reason = `Copy Request failed (${e.name}: ${e.message})`;
+            await doNotCopy(evt);
+        }
         break;
       }
       case 'snapshot-copy-shared': { // Transit Copy -> DR Copy
@@ -147,10 +154,10 @@ exports.handler = async (incoming, context) => {
 };
 /*
  * Check whether the copy should proceed
- * If not then send a no-copy message back to the producer
- * returns true or false
+ * This can be expanded to do more checks in the DR account as required.
+ * Returns: true or false
  */
-async function doNotCopy(evt) {
+function shouldCopy(evt) {
   let copy = true;
   let lifecycleTag = evt.TagList.find(tag => tag.Key == 'Draco_Lifecycle')
   if (lifecycleTag === undefined) {
@@ -161,6 +168,15 @@ async function doNotCopy(evt) {
     evt.Reason = 'Ignored';
     copy = false;
   }
+  return copy;
+}
+
+/*
+ * Send a no-copy message back to the producer
+ * The Reason field of the event is set.
+ */
+async function doNotCopy(evt) {
+  let copy = true;
   if (!copy) {
     evt.EventType = 'snapshot-no-copy'
     let p2 = {
