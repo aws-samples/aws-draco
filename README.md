@@ -67,20 +67,22 @@ To see examples of the policies follow the instructions in [Testing](test/README
 ## Transit Copy
 
 There are several issues with snapshots, their creation and copying:
-* EBS Volume snapshots don't inherit the tags of the underlying volume. DRACO copies the
-  tags from the original volume into the snapshot.
-* RDS Database snapshots can be set to inherit the tags of the underlying database
-* You can't share snapshots encrypted with the default CMK.
-* ...
-Because of this an intermediate or _transit_ copy is made. The transit copy is encrypted
-with a fixed KMS key which is shared with the DR account. This allows the DR account to
-copy the encrypted transit snapshots to the DR (or _target_) copy which is encrypted with an individual
-key per sourcename. These keys are dynamically allocated when the DR copy is made and used
-for all subsequent snapshots. A list of them is kept in the Draco Regional S3 bucket under
-the prefix `keys/<sourcename>`.
+* Snapshots encrypted with the default CMK cannot be shared. This means a temporary transit
+  copy has to be made.
+* Copying unencrypted RDS Cluster snapshots with encryption is not supported, so
+  these will be copied across and stored as-is in plaintext.
+* EBS Volume snapshots don't inherit the tags of the underlying volume so DRACO copies the
+  tags from the original volume and merges them with those of the snapshot.
+* RDS Database snapshots can be set to inherit the tags of the underlying database so the
+  above isn't necessary for them.
 
-Note that copying unencrypted RDS cluster snapshots with encryption is not supported, so
-these will be copied across and stored as-is.
+The transit copy is encrypted with a fixed KMS key which is shared with the DR account.
+This allows the DR account to copy the encrypted transit snapshots to the DR (or _target_)
+copy which is encrypted with an individual key per sourcename. These keys are dynamically
+allocated when the DR copy is made and are identified by an alias name of
+`alias/DRACO-<sourcename>`. As best practice Automatic Rotation is enabled. They are used
+for all subsequent snapshots of the source.
+
 
 ## Costs
 
