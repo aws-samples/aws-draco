@@ -285,11 +285,12 @@ deployment using the CloudFormation console.
 Set the environment variable DEBUG manually in the Lambda functions. This is a numerical
 level:
 
-* 0 (or any other non-numeric value): No debugging
-* > 0: control flow tracing
-* > 1: API call responses
-* > 2: Full details
+* 0: (or any other non-numeric value) No debugging
+* 1: control flow tracing
+* 2: API call responses
+* 3: Full details
 
+Numerically higher levels include the lower levels.
 
 ### Rake Tasks
 
