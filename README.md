@@ -66,9 +66,14 @@ To see examples of the policies follow the instructions in [Testing](test/README
 
 ## Transit Copy
 
+
 There are several issues with snapshots, their creation and copying:
 * Snapshots encrypted with the default CMK cannot be shared. This means a temporary transit
   copy has to be made.
+* Snapshots encrypted with a CMK could be shared, but then they'd need to be permissioned
+  to allow the DR account to use them. They'd also need to be permissioned to allow the
+  production account to use them. Using a transit copy with a transit key avoids the
+  latter permission, but the CMK does need the former. See below for a sample.
 * Copying unencrypted RDS Cluster snapshots with encryption is not supported, so
   these will be copied across and stored as-is in plaintext.
 * EBS Volume snapshots don't inherit the tags of the underlying volume so DRACO copies the
@@ -83,6 +88,49 @@ allocated when the DR copy is made and are identified by an alias name of
 `alias/DRACO-<sourcename>`. As best practice Automatic Rotation is enabled. They are used
 for all subsequent snapshots of the source.
 
+### Sample CMK Policy
+
+If the source snapshot is encrypted with a specific CMK, the CMK must have the appropriate
+permissions to allow DRACO to copy the snapshot and re-encrypt with the transit key.
+
+```json
+{
+    "Sid": "Allow the DRACO Lambda to ReEncrypt with the key",
+    "Effect": "Allow",
+    "Principal": {
+        "AWS": "...ARN of draco-consumer-SnapshotHandlerLambda Role..."
+    },
+    "Action": [
+        "kms:Decrypt",
+        "kms:Encrypt",
+        "kms:ReEncrypt*",
+        "kms:GenerateDataKey*",
+        "kms:DescribeKey"
+    ],
+    "Resource": "*"
+},
+{
+    "Sid": "Allow this Lambda to use this key with RDS and EC2",
+    "Effect": "Allow",
+    "Principal": {
+        "AWS": "...ARN of draco-consumer-SnapshotHandlerLambda Role..."
+    },
+    "Action": [
+        "kms:CreateGrant",
+        "kms:ListGrants",
+        "kms:RevokeGrant"
+    ],
+    "Resource": "*",
+    "Condition": {
+        "Bool": {
+            "kms:GrantIsForAWSResource": "true"
+        }
+    }
+}
+```
+
+The ARN of the Lambda role can be obtained from the CloudFormation stack Resources tab
+in the `LambdaExecutionRole`.
 
 ## Costs
 
