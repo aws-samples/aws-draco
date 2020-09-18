@@ -345,7 +345,7 @@ async function lifeCycle(snapshot_type) {
         break;
       case 'EBS': // Request all the snapshots owned by the DR account with Draco_Lifecycle tags (no pagination)
         params.OwnerIds = [ identity.Account ];
-        params.Filters = [ { Name: "tag-key", Value: "Draco_Lifecycle" } ];
+        params.Filters = [ { Name: 'tag-key', Values: [ 'Draco_Lifecycle' ] } ];
         rsp = await ec2.describeSnapshots(params).promise();
         snapshots = rsp.Snapshots;
         break;
