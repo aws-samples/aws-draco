@@ -154,7 +154,7 @@ exports.handler = async (incoming, context) => {
           }
           case 'EBS': {
             var p0 = {
-              Description: `Draco transient snapshot of ${evt.SourceName} at ${evt.endTime}`,
+              Description: `Draco transient snapshot of ${evt.SourceName} at ${evt.EndTime}`,
               DestinationRegion: evt.Region,
               SourceRegion: evt.Region,
               SourceSnapshotId: evt.SourceId,

@@ -94,7 +94,7 @@ exports.handler = async (incoming, context) => {
               break;
             case 'EBS':// Always encrypt
               params.SourceSnapshotId = evt.TransitArn.split(':snapshot/')[1];
-              params.Description  = `Draco snapshot of ${evt.SourceName}`;
+              params.Description  = `Draco snapshot of ${evt.SourceName} at ${evt.EndTime}`;
               params.SourceRegion = evt.TransitArn.split(':')[4];
               params.DestinationRegion = params.SourceRegion;
               params.Encrypted = true;
