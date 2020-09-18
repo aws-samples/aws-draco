@@ -27,11 +27,11 @@ Parameters:
     Type: String
   DrTagKey:
     Description: The tag key that identifies snapshot transit copies made for DR
-    Default: DR
+    Default: DRACO
     Type: String
   DrTagValue:
     Description: The tag value that identifies snapshot transit copies made for DR
-    Default: DRSnapshotCopy
+    Default: SnapshotCopy
     Type: String
 
 Resources:
