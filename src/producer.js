@@ -249,7 +249,8 @@ exports.handler = async (incoming, context) => {
       }
 
       case 'snapshot-no-copy':
-        console.warn(`${evt.SnapshotType} Snapshot ${evt.SourceId} not copied: ${evt.Reason}`);
+        if (evt.Reason != "Ignored")
+          console.warn(`${evt.SnapshotType} Snapshot ${evt.SourceId} not copied: ${evt.Reason}`);
         break;
 
       default:
