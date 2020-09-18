@@ -123,12 +123,14 @@ exports.handler = async (incoming, context) => {
       }
 
       case 'snapshot-copy-initiate': { // Source -> Transit
+        let taglist = common.mergeTags(evt.TagList, [{ Key: process.env.TAG_KEY, Value: process.env.TAG_VALUE }]);
         switch (evt.SnapshotType) {
           case 'RDS': { // Encrypt all Transit copies using Transit Key
             let p0 = {
               SourceDBSnapshotIdentifier: evt.SourceId,
               TargetDBSnapshotIdentifier: evt.TransitId,
-              CopyTags: true,
+              CopyTags: false,
+              Tags: taglist,
               KmsKeyId: transit_key_arn
             };
             rsp = await rds.copyDBSnapshot(p0).promise();
@@ -139,7 +141,8 @@ exports.handler = async (incoming, context) => {
             let p0 = {
               SourceDBClusterSnapshotIdentifier: evt.SourceId,
               TargetDBClusterSnapshotIdentifier: evt.TransitId,
-              CopyTags: true,
+              CopyTags: false,
+              Tags: taglist
             };
             // Aurora Clusters cannot be encrypted if plaintext
             if (evt.SourceKmsId !== undefined) {
@@ -158,10 +161,10 @@ exports.handler = async (incoming, context) => {
               Encrypted: true,
               KmsKeyId: transit_key_arn
             };
-            if (evt.TagList.length > 0) {
+            if (taglist.length > 0) {
               let TagSpec = {
                 ResourceType: "snapshot",
-                Tags: evt.TagList
+                Tags: taglist
               };
               p0.TagSpecifications = [TagSpec];
             }

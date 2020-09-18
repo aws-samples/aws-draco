@@ -12,6 +12,7 @@ const producer_topic_arn = process.env.PRODUCER_TOPIC_ARN;
 const state_machine_arn = process.env.STATE_MACHINE_ARN;
 const retention = require('./retention.js');
 const DEBUG = Number(process.env.DEBUG) || 0;
+const common = require('./common.js');
 
 exports.handler = async (incoming, context) => {
   var output = 'nothing';
@@ -68,11 +69,11 @@ exports.handler = async (incoming, context) => {
         let params = { };
         try {
           console.log(`Copying $${evt.SnapshotType} Snapshot ${evt.TransitArn} ...`);
-          evt.TagList[process.env.TAG_KEY] = process.env.TAG_VALUE;
+          let taglist = common.mergeTags(evt.TagList, [{ Key: process.env.TAG_KEY, Value: process.env.TAG_VALUE }]);
           switch (evt.SnapshotType) {
             case 'RDS Cluster': // Can only encrypt if original was
               params.CopyTags = false;
-              params.Tags  = evt.TagList;
+              params.Tags = taglist;
               drcopy_id = evt.SourceId.replace(':','-');
               if (evt.SourceKmsId !== undefined) params.KmsKeyId = evt.TargetKmsId;
               else console.warn (`${evt.SnapshotType} Snapshot ${evt.TransitArn} will be unencrypted!`);
@@ -83,7 +84,7 @@ exports.handler = async (incoming, context) => {
               break;
             case 'RDS': // Always encrypt
               params.CopyTags = false;
-              params.Tags  = evt.TagList;
+              params.Tags = taglist;
               drcopy_id = evt.SourceId.replace(':','-');
               params.SourceDBSnapshotIdentifier = evt.TransitArn;
               params.TargetDBSnapshotIdentifier = drcopy_id;
@@ -98,10 +99,10 @@ exports.handler = async (incoming, context) => {
               params.DestinationRegion = params.SourceRegion;
               params.Encrypted = true;
               params.KmsKeyId = evt.TargetKmsId;
-              if (evt.TagList.length > 0) {
+              if (taglist.length > 0) {
                 let TagSpec = {
                   ResourceType: "snapshot",
-                  Tags: evt.TagList
+                  Tags: taglist
                 };
                 params.TagSpecifications = [TagSpec];
               }
